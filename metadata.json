@@ -1,0 +1,5 @@
+{
+  "name": "译构 PDF",
+  "description": "使用 Gemini 视觉能力进行版式保留与中文化重构的 PDF 转换工具。",
+  "requestFramePermissions": []
+}

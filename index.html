@@ -1,0 +1,154 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>译构 PDF</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700&family=Noto+Serif+SC:wght@400;500;700&display=swap" rel="stylesheet" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['"Noto Sans SC"', '"Source Han Sans SC"', '"PingFang SC"', '"Microsoft YaHei"', 'system-ui', 'sans-serif'],
+              serif: ['"Noto Serif SC"', '"Source Han Serif SC"', '"Songti SC"', '"STSong"', 'serif'],
+            },
+            colors: {
+              accent: '#000000',
+              paper: '#f8f9fa',
+            },
+            boxShadow: {
+              float: '0 20px 40px -10px rgba(0,0,0,0.05)',
+              soft: '0 4px 20px -5px rgba(0,0,0,0.03)',
+            },
+          },
+        },
+      };
+    </script>
+
+    <style>
+      :root {
+        --font-serif: 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'STSong', serif;
+        --font-sans: 'Noto Sans SC', 'Source Han Sans SC', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+      }
+
+      body {
+        background-color: #fcfcfc;
+        color: #1a1a1a;
+        font-family: var(--font-sans);
+      }
+
+      ::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
+      }
+
+      ::-webkit-scrollbar-thumb {
+        background: #e5e5e5;
+        border-radius: 3px;
+      }
+
+      .center-abs {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+      }
+
+      @media print {
+        @page {
+          size: A4;
+          margin: 12mm;
+        }
+
+        html,
+        body {
+          width: 210mm;
+          background: #fff !important;
+          -webkit-print-color-adjust: exact !important;
+          print-color-adjust: exact !important;
+        }
+
+        nav,
+        .no-print,
+        .status-pill,
+        button {
+          display: none !important;
+        }
+
+        #root {
+          width: 100% !important;
+        }
+
+        main {
+          margin: 0 !important;
+          padding: 0 !important;
+          max-width: none !important;
+        }
+
+        .page-container {
+          width: 186mm !important;
+          max-width: 186mm !important;
+          margin: 0 auto 8mm !important;
+          border-radius: 0 !important;
+          border: 1px solid #e5e7eb !important;
+          box-shadow: none !important;
+          overflow: visible !important;
+          break-inside: avoid;
+          page-break-inside: avoid;
+          break-after: page;
+          page-break-after: always;
+        }
+
+        .page-container:last-child {
+          break-after: auto;
+          page-break-after: auto;
+        }
+
+        .page-content {
+          max-width: none !important;
+          padding: 14mm 10mm !important;
+        }
+
+        .page-content > * {
+          break-inside: avoid;
+          page-break-inside: avoid;
+        }
+
+        figure,
+        blockquote,
+        img {
+          break-inside: avoid;
+          page-break-inside: avoid;
+        }
+
+        img {
+          max-width: 100% !important;
+          height: auto !important;
+        }
+      }
+    </style>
+
+    <script type="importmap">
+      {
+        "imports": {
+          "react/": "https://aistudiocdn.com/react@^19.2.1/",
+          "react": "https://aistudiocdn.com/react@^19.2.1",
+          "lucide-react": "https://aistudiocdn.com/lucide-react@^0.556.0",
+          "@google/genai": "https://aistudiocdn.com/@google/genai@^1.31.0",
+          "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.1/"
+        }
+      }
+    </script>
+    <link rel="stylesheet" href="/index.css" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+  </body>
+</html>
