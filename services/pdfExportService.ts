@@ -592,7 +592,7 @@ const loadFonts = async (pdfDoc: PDFDocument): Promise<FontPack> => {
   }
 
   const serifBytes = await serifRes.arrayBuffer();
-  const serif = await pdfDoc.embedFont(serifBytes, { subset: true });
+  const serif = await pdfDoc.embedFont(serifBytes, { subset: false });
 
   // 导出只使用一套衬线字体，减少 PDF 体积并统一字形。
   return { sans: serif, serif };
