@@ -17,6 +17,24 @@ interface Props {
 
 const formatTime = (ts: number) => new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
+const escapeHtml = (value: string) =>
+  value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
+const renderMarkdownLite = (raw: string) => {
+  const normalized = raw
+    .replace(/^\s*[*-]\s+/gm, '• ')
+    .replace(/^\s*(\d+)\.\s+/gm, '$1. ');
+
+  const escaped = escapeHtml(normalized);
+  const withBold = escaped.replace(/\*\*([\s\S]+?)\*\*/g, '<strong>$1</strong>');
+  return withBold.replace(/\n/g, '<br />');
+};
+
 const ThinkingDots: React.FC = () => (
   <div className="flex items-center gap-1.5 py-0.5">
     {[0, 1, 2].map((idx) => (
@@ -168,7 +186,10 @@ const TranslationChatPanel: React.FC<Props> = ({
                   : 'bg-white text-[#2a2b31] rounded-bl-md'
               }`}
               >
-                {msg.text}
+                <div
+                  className="break-words"
+                  dangerouslySetInnerHTML={{ __html: renderMarkdownLite(msg.text) }}
+                />
                 <div className={`mt-1 text-[10px] ${msg.role === 'user' ? 'text-gray-300' : 'text-gray-400'}`}>
                   {formatTime(msg.createdAt)}
                 </div>
