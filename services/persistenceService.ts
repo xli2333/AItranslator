@@ -355,6 +355,16 @@ export const appendChatMessage = async (threadId: string, message: ChatMessage) 
   if (error) throw error;
 };
 
+export const deleteChatScope = async (documentId: string, scopeKey: string) => {
+  assertSupabaseConfigured();
+  const { error } = await supabase
+    .from('chat_threads')
+    .delete()
+    .eq('document_id', documentId)
+    .eq('scope_key', scopeKey);
+  if (error) throw error;
+};
+
 export const loadChats = async (documentId: string): Promise<LoadedChats> => {
   assertSupabaseConfigured();
 

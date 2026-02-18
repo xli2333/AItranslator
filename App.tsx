@@ -4,7 +4,6 @@ import { Download, Loader2, LogOut, Square } from 'lucide-react';
 import {
   AnnotationRecord,
   AppStatus,
-  ChatEditAction,
   ChatMessage,
   ChatScope,
   DocumentSummary,
@@ -19,6 +18,7 @@ import {
   appendChatMessage,
   createDocument,
   deleteAnnotation,
+  deleteChatScope,
   deleteDocument,
   ensureThread,
   listDocumentsByUser,
@@ -42,34 +42,9 @@ import LanguageSelector from './components/LanguageSelector';
 const createDocumentScope = (): ChatScope => ({ key: 'document', kind: 'document', label: '全文对话' });
 
 const localizeScopeLabel = (scope: ChatScope): ChatScope => {
-  if (scope.kind === 'document') {
-    return { ...scope, label: '全文对话' };
-  }
-  if (scope.kind === 'page') {
-    return { ...scope, label: `第 ${scope.pageNumber ?? '-'} 页` };
-  }
+  if (scope.kind === 'document') return { ...scope, label: '全文对话' };
+  if (scope.kind === 'page') return { ...scope, label: `第 ${scope.pageNumber ?? '-'} 页` };
   return { ...scope, label: `选中 第 ${scope.pageNumber ?? '-'} 页` };
-};
-
-const applyChatActions = (pages: ProcessedPage[], actions: ChatEditAction[], scope: ChatScope): ProcessedPage[] => {
-  const allowed = actions.filter((action) => {
-    if (scope.kind === 'document') return true;
-    if (scope.pageNumber && action.pageNumber !== scope.pageNumber) return false;
-    if (scope.kind === 'selection' && scope.blockId && action.blockId !== scope.blockId) return false;
-    return true;
-  });
-  if (!allowed.length) return pages;
-
-  const patch = new Map<string, string>();
-  allowed.forEach((a) => patch.set(`${a.pageNumber}::${a.blockId}`, a.newContent));
-
-  return pages.map((page) => {
-    const nextBlocks = page.blocks.map((block) => {
-      const key = `${page.pageNumber}::${block.id}`;
-      return patch.has(key) ? { ...block, content: patch.get(key) ?? block.content } : block;
-    });
-    return { ...page, blocks: harmonizeTypographyForBlocks(nextBlocks) };
-  });
 };
 
 const sortScopes = (scopes: ChatScope[]) => [...scopes].sort((a, b) => {
@@ -105,6 +80,7 @@ const App: React.FC = () => {
   const [chatMessages, setChatMessages] = useState<Record<string, ChatMessage[]>>({ document: [] });
   const [activeChatKey, setActiveChatKey] = useState('document');
   const [chatLoading, setChatLoading] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
 
   const processingRef = useRef(false);
   const stopRef = useRef(false);
@@ -228,6 +204,20 @@ const App: React.FC = () => {
     }
   };
 
+  const resetWorkspace = () => {
+    setStatus(AppStatus.IDLE);
+    setPages([]);
+    setAnnotations([]);
+    setPendingSnippet(null);
+    setActiveAnnotationId(null);
+    setActiveDocumentId(null);
+    setChatScopes({ document: createDocumentScope() });
+    setChatMessages({ document: [] });
+    setActiveChatKey('document');
+    setSelectedFile(null);
+    setChatOpen(false);
+  };
+
   const startProcessing = async (file: File) => {
     if (!apiKey.trim()) return alert('请先输入 Gemini 密钥。');
     if (!session?.user) return alert('请先登录。');
@@ -238,6 +228,7 @@ const App: React.FC = () => {
     setChatScopes({ document: createDocumentScope() });
     setChatMessages({ document: [] });
     setActiveChatKey('document');
+    setChatOpen(false);
     stopRef.current = false;
 
     const doc = await createDocument({
@@ -267,7 +258,14 @@ const App: React.FC = () => {
         canvas.height = viewport.height;
         if (!ctx) continue;
         await page.render({ canvasContext: ctx, viewport }).promise;
-        parsed.push({ pageNumber: pageNum, originalImageUrl: canvas.toDataURL('image/jpeg', 0.8), width: viewport.width, height: viewport.height, blocks: [], status: 'pending' });
+        parsed.push({
+          pageNumber: pageNum,
+          originalImageUrl: canvas.toDataURL('image/jpeg', 0.8),
+          width: viewport.width,
+          height: viewport.height,
+          blocks: [],
+          status: 'pending',
+        });
       }
       setPages(parsed);
       processPipeline(parsed, doc.id);
@@ -288,6 +286,7 @@ const App: React.FC = () => {
     setChatScopes(scopes);
     setChatMessages({ document: snapshot.messagesByScopeKey.document ?? [], ...snapshot.messagesByScopeKey });
     setActiveChatKey('document');
+    setChatOpen(false);
   };
 
   const sendChat = async (text: string) => {
@@ -299,7 +298,6 @@ const App: React.FC = () => {
     setChatLoading(true);
     try {
       const result = await chatWithTranslation({ scope, pages, history, userMessage: text, targetLang, apiKey });
-      if (result.actions.length) setPages((curr) => applyChatActions(curr, result.actions, scope));
       const modelTurn: ChatMessage = { role: 'model', text: result.assistantReply, createdAt: Date.now() };
       setChatMessages((prev) => ({ ...prev, [scope.key]: [...(prev[scope.key] ?? []), modelTurn] }));
       if (session?.user && activeDocumentId) {
@@ -317,6 +315,32 @@ const App: React.FC = () => {
     setChatScopes((prev) => ({ ...prev, [localized.key]: localized }));
     setChatMessages((prev) => (prev[localized.key] ? prev : { ...prev, [localized.key]: [] }));
     setActiveChatKey(localized.key);
+    setChatOpen(true);
+  };
+
+  const removeScopeFromState = (scopeKey: string) => {
+    setChatScopes((prev) => {
+      const next = { ...prev };
+      delete next[scopeKey];
+      return next;
+    });
+    setChatMessages((prev) => {
+      const next = { ...prev };
+      delete next[scopeKey];
+      return next;
+    });
+    if (activeChatKey === scopeKey) {
+      setActiveChatKey('document');
+    }
+  };
+
+  const handleDeleteScope = async (scopeKey: string) => {
+    if (scopeKey === 'document') return;
+    if (!window.confirm('确认删除该对话会话及其历史消息吗？')) return;
+    if (activeDocumentId) {
+      await deleteChatScope(activeDocumentId, scopeKey);
+    }
+    removeScopeFromState(scopeKey);
   };
 
   const onSnippet = (snippet: SelectionSnippet) => {
@@ -345,7 +369,13 @@ const App: React.FC = () => {
     const updated = await saveAnnotation({
       documentId: item.documentId,
       annotationId: item.id,
-      snippet: { pageNumber: item.pageNumber, blockId: item.blockId, selectedText: item.selectedText, startOffset: item.startOffset, endOffset: item.endOffset },
+      snippet: {
+        pageNumber: item.pageNumber,
+        blockId: item.blockId,
+        selectedText: item.selectedText,
+        startOffset: item.startOffset,
+        endOffset: item.endOffset,
+      },
       note,
       color: item.color,
     });
@@ -380,7 +410,11 @@ const App: React.FC = () => {
     return <div className="min-h-screen flex items-center justify-center text-sm">缺少 Supabase 环境变量，请配置后重启。</div>;
   }
   if (!authReady) {
-    return <div className="min-h-screen flex items-center justify-center"><Loader2 className="w-5 h-5 animate-spin" /></div>;
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="w-5 h-5 animate-spin" />
+      </div>
+    );
   }
   if (!session) return <AuthPanel />;
 
@@ -418,27 +452,10 @@ const App: React.FC = () => {
             await deleteDocument(id);
             setDocuments((prev) => prev.filter((d) => d.id !== id));
             if (activeDocumentId === id) {
-              setStatus(AppStatus.IDLE);
-              setPages([]);
-              setAnnotations([]);
-              setActiveDocumentId(null);
-              setChatScopes({ document: createDocumentScope() });
-              setChatMessages({ document: [] });
-              setActiveChatKey('document');
+              resetWorkspace();
             }
           }}
-          onNew={() => {
-            setStatus(AppStatus.IDLE);
-            setPages([]);
-            setAnnotations([]);
-            setPendingSnippet(null);
-            setActiveAnnotationId(null);
-            setActiveDocumentId(null);
-            setChatScopes({ document: createDocumentScope() });
-            setChatMessages({ document: [] });
-            setActiveChatKey('document');
-            setSelectedFile(null);
-          }}
+          onNew={resetWorkspace}
         />
 
         <section>
@@ -520,9 +537,13 @@ const App: React.FC = () => {
           activeAnnotationId={activeAnnotationId}
           pendingSnippet={pendingSnippet}
           onCreate={saveSnippetAnnotation}
-          onDelete={async (id) => { await deleteAnnotation(id); setAnnotations((prev) => prev.filter((a) => a.id !== id)); }}
+          onDelete={async (id) => {
+            await deleteAnnotation(id);
+            setAnnotations((prev) => prev.filter((a) => a.id !== id));
+          }}
           onUpdateNote={updateAnnotationNote}
           onFocusAnnotation={(id) => { setActiveAnnotationId(id); }}
+          onCancelPending={() => setPendingSnippet(null)}
         />
       </main>
 
@@ -532,7 +553,11 @@ const App: React.FC = () => {
           activeScopeKey={activeChatKey}
           messages={chatMessages[activeChatKey] ?? []}
           loading={chatLoading}
+          isOpen={chatOpen}
+          onOpen={() => setChatOpen(true)}
+          onClose={() => setChatOpen(false)}
           onSwitchScope={setActiveChatKey}
+          onDeleteScope={handleDeleteScope}
           onSendMessage={sendChat}
         />
       )}

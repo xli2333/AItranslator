@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { AnnotationRecord, SelectionSnippet } from '../types';
-import { Highlighter, Save, Trash2 } from 'lucide-react';
+import { Highlighter, Save, Trash2, X } from 'lucide-react';
 
 interface Props {
   annotations: AnnotationRecord[];
@@ -10,6 +10,7 @@ interface Props {
   onDelete: (annotationId: string) => Promise<void>;
   onUpdateNote: (annotationId: string, note: string) => Promise<void>;
   onFocusAnnotation: (annotationId: string) => void;
+  onCancelPending: () => void;
 }
 
 const DEFAULT_COLORS = ['#fde68a', '#bfdbfe', '#fecdd3', '#bbf7d0'];
@@ -22,6 +23,7 @@ const AnnotationPanel: React.FC<Props> = ({
   onDelete,
   onUpdateNote,
   onFocusAnnotation,
+  onCancelPending,
 }) => {
   const [newNote, setNewNote] = useState('');
   const [newColor, setNewColor] = useState(DEFAULT_COLORS[0]);
@@ -47,6 +49,13 @@ const AnnotationPanel: React.FC<Props> = ({
     }
   };
 
+  const handleCancelPending = () => {
+    if (saving) return;
+    setNewNote('');
+    setNewColor(DEFAULT_COLORS[0]);
+    onCancelPending();
+  };
+
   return (
     <aside className="w-full lg:w-80 h-fit sticky top-24 no-print glass-surface rounded-[1.6rem] overflow-hidden">
       <div className="px-4 py-3 flex items-center gap-2">
@@ -56,9 +65,17 @@ const AnnotationPanel: React.FC<Props> = ({
 
       {pendingSnippet && (
         <div className="mx-3 mb-2 rounded-2xl bg-white/80 px-3 py-3">
-          <p className="text-xs text-gray-500 mb-2">
-            第 {pendingSnippet.pageNumber} 页选中文本
-          </p>
+          <div className="mb-2 flex items-center justify-between">
+            <p className="text-xs text-gray-500">第 {pendingSnippet.pageNumber} 页选中文本</p>
+            <button
+              type="button"
+              onClick={handleCancelPending}
+              className="h-6 w-6 rounded-full text-gray-500 hover:bg-gray-100 flex items-center justify-center"
+              title="关闭选中标注"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
           <p className="text-xs text-gray-700 rounded-xl px-2 py-2 bg-[#fffbe9]">
             {pendingSnippet.selectedText}
           </p>
@@ -84,15 +101,24 @@ const AnnotationPanel: React.FC<Props> = ({
                 />
               ))}
             </div>
-            <button
-              type="button"
-              onClick={handleCreate}
-              disabled={saving}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-black text-white text-xs tracking-[0.08em] disabled:opacity-50"
-            >
-              <Save className="w-3.5 h-3.5" />
-              保存
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleCancelPending}
+                className="px-2.5 py-1.5 rounded-xl text-xs text-gray-600 hover:bg-gray-100"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={handleCreate}
+                disabled={saving}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-black text-white text-xs tracking-[0.08em] disabled:opacity-50"
+              >
+                <Save className="w-3.5 h-3.5" />
+                保存
+              </button>
+            </div>
           </div>
         </div>
       )}
