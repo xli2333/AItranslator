@@ -477,7 +477,13 @@ const App: React.FC = () => {
             {isExporting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
             导出译文
           </button>
-          <button onClick={() => { supabase.auth.signOut(); }} className="p-2 rounded-full bg-white/90 text-gray-700 hover:text-black">
+          <button
+            onClick={() => {
+              if (!window.confirm('是否确定退出登录？')) return;
+              supabase.auth.signOut();
+            }}
+            className="p-2 rounded-full bg-white/90 text-gray-700 hover:text-black"
+          >
             <LogOut className="w-4 h-4" />
           </button>
         </div>
