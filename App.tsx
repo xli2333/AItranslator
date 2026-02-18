@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Session } from '@supabase/supabase-js';
-import { Download, Loader2, LogOut, Square } from 'lucide-react';
+import { Download, KeyRound, Loader2, LogOut, Square } from 'lucide-react';
 import {
   AnnotationRecord,
   AppStatus,
@@ -39,6 +39,7 @@ import PageRenderer from './components/PageRenderer';
 import FileUpload from './components/FileUpload';
 import LanguageSelector from './components/LanguageSelector';
 
+const GEMINI_KEY_STORAGE_KEY = 'fluxtranslate_gemini_key';
 const createDocumentScope = (): ChatScope => ({ key: 'document', kind: 'document', label: '全文对话' });
 
 const localizeScopeLabel = (scope: ChatScope): ChatScope => {
@@ -60,6 +61,7 @@ const App: React.FC = () => {
   const [status, setStatus] = useState<AppStatus>(AppStatus.IDLE);
   const [progress, setProgress] = useState('');
   const [apiKey, setApiKey] = useState('');
+  const [apiKeyDraft, setApiKeyDraft] = useState('');
   const [sourceLang, setSourceLang] = useState<string>('自动检测');
   const [targetLang, setTargetLang] = useState<string>(Language.ZH);
   const [viewMode, setViewMode] = useState<ViewMode>('translation');
@@ -86,6 +88,17 @@ const App: React.FC = () => {
   const stopRef = useRef(false);
   const saveTimerRef = useRef<number | null>(null);
 
+  const confirmApiKey = () => {
+    const trimmed = apiKeyDraft.trim();
+    if (!trimmed) {
+      alert('请输入 Gemini 密钥。');
+      return;
+    }
+    setApiKey(trimmed);
+    setApiKeyDraft(trimmed);
+    window.localStorage.setItem(GEMINI_KEY_STORAGE_KEY, trimmed);
+  };
+
   const refreshDocuments = async () => {
     if (!session?.user) return;
     setDocumentsLoading(true);
@@ -95,6 +108,14 @@ const App: React.FC = () => {
       setDocumentsLoading(false);
     }
   };
+
+  useEffect(() => {
+    const stored = window.localStorage.getItem(GEMINI_KEY_STORAGE_KEY)?.trim();
+    if (stored) {
+      setApiKey(stored);
+      setApiKeyDraft(stored);
+    }
+  }, []);
 
   useEffect(() => {
     if (!isSupabaseConfigured) {
@@ -219,7 +240,7 @@ const App: React.FC = () => {
   };
 
   const startProcessing = async (file: File) => {
-    if (!apiKey.trim()) return alert('请先输入 Gemini 密钥。');
+    if (!apiKey.trim()) return alert('请先在左侧输入并确认 Gemini 密钥。');
     if (!session?.user) return alert('请先登录。');
     setStatus(AppStatus.PROCESSING);
     setProgress('正在准备文档...');
@@ -290,7 +311,7 @@ const App: React.FC = () => {
   };
 
   const sendChat = async (text: string) => {
-    if (!apiKey.trim()) return alert('请先输入 Gemini 密钥。');
+    if (!apiKey.trim()) return alert('请先在左侧输入并确认 Gemini 密钥。');
     const scope = chatScopes[activeChatKey] ?? createDocumentScope();
     const history = chatMessages[scope.key] ?? [];
     const userTurn: ChatMessage = { role: 'user', text, createdAt: Date.now() };
@@ -441,33 +462,53 @@ const App: React.FC = () => {
       </header>
 
       <main className="pt-24 px-4 pb-20 max-w-[1720px] mx-auto grid grid-cols-1 lg:grid-cols-[290px_1fr_330px] gap-4 md:gap-5">
-        <DocumentLibrary
-          documents={documents}
-          activeDocumentId={activeDocumentId}
-          loading={documentsLoading}
-          onReload={refreshDocuments}
-          onOpen={loadDocument}
-          onDelete={async (id) => {
-            if (!window.confirm('确认删除该文档及其全部标注和对话记录吗？')) return;
-            await deleteDocument(id);
-            setDocuments((prev) => prev.filter((d) => d.id !== id));
-            if (activeDocumentId === id) {
-              resetWorkspace();
-            }
-          }}
-          onNew={resetWorkspace}
-        />
+        <section className="space-y-3">
+          <div className="glass-surface rounded-[1.6rem] p-3 no-print">
+            <div className="flex items-center gap-2 mb-2">
+              <KeyRound className="w-4 h-4 text-gray-600" />
+              <span className="text-sm font-medium">Gemini 密钥</span>
+            </div>
+            <input
+              type="password"
+              className="w-full rounded-xl px-3 py-2 text-sm bg-white/90 outline-none"
+              placeholder="输入后点确定，旧任务聊天也可用"
+              value={apiKeyDraft}
+              onChange={(e) => setApiKeyDraft(e.target.value)}
+            />
+            <div className="mt-2 flex items-center justify-between">
+              <span className="text-[11px] text-gray-500">{apiKey ? '已确认密钥' : '未确认密钥'}</span>
+              <button
+                type="button"
+                onClick={confirmApiKey}
+                className="px-3 py-1.5 rounded-lg bg-black text-white text-xs tracking-[0.08em]"
+              >
+                确定
+              </button>
+            </div>
+          </div>
+
+          <DocumentLibrary
+            documents={documents}
+            activeDocumentId={activeDocumentId}
+            loading={documentsLoading}
+            onReload={refreshDocuments}
+            onOpen={loadDocument}
+            onDelete={async (id) => {
+              if (!window.confirm('确认删除该文档及其全部标注和对话记录吗？')) return;
+              await deleteDocument(id);
+              setDocuments((prev) => prev.filter((d) => d.id !== id));
+              if (activeDocumentId === id) {
+                resetWorkspace();
+              }
+            }}
+            onNew={resetWorkspace}
+          />
+        </section>
 
         <section>
           {status === AppStatus.IDLE && (
             <div className="space-y-4 glass-surface rounded-[1.8rem] p-4 md:p-6">
               <LanguageSelector sourceLang={sourceLang} targetLang={targetLang} setSourceLang={setSourceLang} setTargetLang={setTargetLang} disabled={false} />
-              <input
-                className="w-full rounded-2xl px-4 py-3 bg-white/85 outline-none text-sm"
-                placeholder="请输入 Gemini 密钥"
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-              />
               <input
                 className="w-full rounded-2xl px-4 py-3 bg-white/85 outline-none text-sm"
                 placeholder="页码范围：全部 或 1-3,8"
