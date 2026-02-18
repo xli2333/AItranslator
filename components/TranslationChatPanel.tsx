@@ -17,6 +17,18 @@ interface Props {
 
 const formatTime = (ts: number) => new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
+const ThinkingDots: React.FC = () => (
+  <div className="flex items-center gap-1.5 py-0.5">
+    {[0, 1, 2].map((idx) => (
+      <span
+        key={idx}
+        className="h-1.5 w-1.5 rounded-full bg-gray-500 animate-bounce"
+        style={{ animationDelay: `${idx * 120}ms` }}
+      />
+    ))}
+  </div>
+);
+
 const TranslationChatPanel: React.FC<Props> = ({
   scopes,
   activeScopeKey,
@@ -168,6 +180,17 @@ const TranslationChatPanel: React.FC<Props> = ({
               )}
             </div>
           ))}
+
+          {loading && (
+            <div className="flex gap-2 justify-start">
+              <div className="w-6 h-6 rounded-full bg-white text-gray-500 flex items-center justify-center shrink-0">
+                <Bot className="w-3.5 h-3.5" />
+              </div>
+              <div className="max-w-[82%] rounded-2xl rounded-bl-md px-3 py-2 bg-white text-[#2a2b31]">
+                <ThinkingDots />
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
