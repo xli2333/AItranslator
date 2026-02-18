@@ -403,6 +403,28 @@ const App: React.FC = () => {
     setAnnotations((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
   };
 
+  const focusAnnotation = (annotationId: string) => {
+    setActiveAnnotationId(annotationId);
+    const targetAnnotation = annotations.find((item) => item.id === annotationId);
+    if (!targetAnnotation) return;
+
+    const escapeAttr = (value: string) => value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+
+    window.requestAnimationFrame(() => {
+      window.setTimeout(() => {
+        const pageEl = document.getElementById(`page-${targetAnnotation.pageNumber}`);
+        const selector = `[data-block-id="${escapeAttr(targetAnnotation.blockId)}"]`;
+        const blockEl = pageEl?.querySelector<HTMLElement>(selector)
+          ?? document.querySelector<HTMLElement>(`#page-${targetAnnotation.pageNumber} ${selector}`);
+
+        (blockEl ?? pageEl)?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'center',
+        });
+      }, 30);
+    });
+  };
+
   const exportPdf = async () => {
     if (!pages.length || isExporting) return;
     setIsExporting(true);
@@ -583,7 +605,7 @@ const App: React.FC = () => {
             setAnnotations((prev) => prev.filter((a) => a.id !== id));
           }}
           onUpdateNote={updateAnnotationNote}
-          onFocusAnnotation={(id) => { setActiveAnnotationId(id); }}
+          onFocusAnnotation={focusAnnotation}
           onCancelPending={() => setPendingSnippet(null)}
         />
       </main>
