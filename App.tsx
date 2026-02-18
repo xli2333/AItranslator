@@ -69,6 +69,7 @@ const App: React.FC = () => {
   const [pageRange, setPageRange] = useState('全部');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isExporting, setIsExporting] = useState(false);
+  const [retranslatingImageMap, setRetranslatingImageMap] = useState<Record<string, boolean>>({});
 
   const [documents, setDocuments] = useState<DocumentSummary[]>([]);
   const [documentsLoading, setDocumentsLoading] = useState(false);
@@ -188,6 +189,52 @@ const App: React.FC = () => {
     img.src = base64Page;
   });
 
+  const handleRetranslateImage = async (pageNumber: number, blockId: string) => {
+    if (!apiKey.trim()) {
+      alert('Please confirm Gemini API key first.');
+      return;
+    }
+
+    const page = pages.find((item) => item.pageNumber === pageNumber);
+    const block = page?.blocks.find((item) => item.id === blockId && item.type === 'image');
+    if (!page || !block?.box) {
+      alert('This image block has no coordinates and cannot be retranslated.');
+      return;
+    }
+
+    const taskKey = `${pageNumber}:${blockId}`;
+    if (retranslatingImageMap[taskKey]) return;
+
+    setRetranslatingImageMap((prev) => ({ ...prev, [taskKey]: true }));
+    try {
+      const crop = await cropImage(page.originalImageUrl, block.box);
+      if (!crop) throw new Error('crop_failed');
+
+      const translated = await translateImageBlockWithRetry(crop, targetLang, apiKey, { retries: 3, initialDelayMs: 900 });
+      if (!translated) {
+        alert('Retranslation did not succeed this time. Please retry later.');
+        return;
+      }
+
+      setPages((prev) => prev.map((item) => {
+        if (item.pageNumber !== pageNumber) return item;
+        return {
+          ...item,
+          blocks: item.blocks.map((entry) => (entry.id === blockId ? { ...entry, imageUrl: translated } : entry)),
+        };
+      }));
+    } catch (error) {
+      console.error('Image retranslate error:', error);
+      alert('Image retranslation failed. Please retry later.');
+    } finally {
+      setRetranslatingImageMap((prev) => {
+        const next = { ...prev };
+        delete next[taskKey];
+        return next;
+      });
+    }
+  };
+
   const processPipeline = async (initialPages: ProcessedPage[], docId: string) => {
     if (processingRef.current) return;
     processingRef.current = true;
@@ -237,6 +284,7 @@ const App: React.FC = () => {
     setActiveChatKey('document');
     setSelectedFile(null);
     setChatOpen(false);
+    setRetranslatingImageMap({});
   };
 
   const startProcessing = async (file: File) => {
@@ -250,6 +298,7 @@ const App: React.FC = () => {
     setChatMessages({ document: [] });
     setActiveChatKey('document');
     setChatOpen(false);
+    setRetranslatingImageMap({});
     stopRef.current = false;
 
     const doc = await createDocument({
@@ -308,6 +357,7 @@ const App: React.FC = () => {
     setChatMessages({ document: snapshot.messagesByScopeKey.document ?? [], ...snapshot.messagesByScopeKey });
     setActiveChatKey('document');
     setChatOpen(false);
+    setRetranslatingImageMap({});
   };
 
   const sendChat = async (text: string) => {
@@ -590,6 +640,8 @@ const App: React.FC = () => {
                   apiKey={apiKey}
                   viewMode={viewMode}
                   onUpdatePage={(pageNumber, blocks) => setPages((prev) => prev.map((p) => (p.pageNumber === pageNumber ? { ...p, blocks } : p)))}
+                  onRetranslateImage={handleRetranslateImage}
+                  isImageRetranslating={(blockId) => Boolean(retranslatingImageMap[`${page.pageNumber}:${blockId}`])}
                   onStartPageChat={(pageNumber) => createOrSelectScope({ key: `page-${pageNumber}`, kind: 'page', pageNumber, label: `第 ${pageNumber} 页` })}
                   onSelectSnippet={onSnippet}
                   annotationsByBlockId={annotationByBlock}
