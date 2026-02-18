@@ -1,417 +1,507 @@
-﻿import React, { useRef, useState } from 'react';
-import { AppStatus, ProcessedPage, Language, LayoutBlock } from './types';
-import { analyzePageLayout, translateImageBlock } from './services/geminiService';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Session } from '@supabase/supabase-js';
+import { Download, Loader2, LogOut, Square } from 'lucide-react';
+import {
+  AnnotationRecord,
+  AppStatus,
+  ChatEditAction,
+  ChatMessage,
+  ChatScope,
+  DocumentSummary,
+  Language,
+  LayoutBlock,
+  ProcessedPage,
+  SelectionSnippet,
+  ViewMode,
+} from './types';
+import { supabase, isSupabaseConfigured } from './services/supabaseClient';
+import {
+  appendChatMessage,
+  createDocument,
+  deleteAnnotation,
+  deleteDocument,
+  ensureThread,
+  listDocumentsByUser,
+  loadDocumentSnapshot,
+  saveAnnotation,
+  updateDocumentMeta,
+  uploadExportedPdf,
+  uploadSourcePdf,
+  upsertDocumentPages,
+} from './services/persistenceService';
+import { harmonizeTypographyForBlocks } from './services/typographyService';
+import { analyzePageLayout, chatWithTranslation, translateImageBlockWithRetry } from './services/geminiService';
+import AuthPanel from './components/AuthPanel';
+import DocumentLibrary from './components/DocumentLibrary';
+import AnnotationPanel from './components/AnnotationPanel';
+import TranslationChatPanel from './components/TranslationChatPanel';
+import PageRenderer from './components/PageRenderer';
 import FileUpload from './components/FileUpload';
 import LanguageSelector from './components/LanguageSelector';
-import PageRenderer from './components/PageRenderer';
-import { Download, Square, ArrowRight, FileText, Trash2, Layers, Loader2, KeyRound } from 'lucide-react';
+
+const createDocumentScope = (): ChatScope => ({ key: 'document', kind: 'document', label: 'Document Chat' });
+
+const applyChatActions = (pages: ProcessedPage[], actions: ChatEditAction[], scope: ChatScope): ProcessedPage[] => {
+  const allowed = actions.filter((action) => {
+    if (scope.kind === 'document') return true;
+    if (scope.pageNumber && action.pageNumber !== scope.pageNumber) return false;
+    if (scope.kind === 'selection' && scope.blockId && action.blockId !== scope.blockId) return false;
+    return true;
+  });
+  if (!allowed.length) return pages;
+
+  const patch = new Map<string, string>();
+  allowed.forEach((a) => patch.set(`${a.pageNumber}::${a.blockId}`, a.newContent));
+
+  return pages.map((page) => {
+    const nextBlocks = page.blocks.map((block) => {
+      const key = `${page.pageNumber}::${block.id}`;
+      return patch.has(key) ? { ...block, content: patch.get(key) ?? block.content } : block;
+    });
+    return { ...page, blocks: harmonizeTypographyForBlocks(nextBlocks) };
+  });
+};
+
+const sortScopes = (scopes: ChatScope[]) => [...scopes].sort((a, b) => {
+  const rank = (s: ChatScope) => (s.kind === 'document' ? 0 : s.kind === 'page' ? 1 : 2);
+  const diff = rank(a) - rank(b);
+  if (diff) return diff;
+  return (a.pageNumber ?? 0) - (b.pageNumber ?? 0);
+});
 
 const App: React.FC = () => {
+  const [session, setSession] = useState<Session | null>(null);
+  const [authReady, setAuthReady] = useState(false);
   const [status, setStatus] = useState<AppStatus>(AppStatus.IDLE);
-  const [pages, setPages] = useState<ProcessedPage[]>([]);
+  const [progress, setProgress] = useState('');
+  const [apiKey, setApiKey] = useState('');
   const [sourceLang, setSourceLang] = useState<string>('自动检测');
   const [targetLang, setTargetLang] = useState<string>(Language.ZH);
-  const [geminiApiKey, setGeminiApiKey] = useState<string>('');
-  const [customInstruction, setCustomInstruction] = useState<string>('');
-  const [pageRange, setPageRange] = useState<string>('全部');
-  const [progressMsg, setProgressMsg] = useState<string>('');
+  const [viewMode, setViewMode] = useState<ViewMode>('translation');
+  const [customInstruction, setCustomInstruction] = useState('');
+  const [pageRange, setPageRange] = useState('all');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isExporting, setIsExporting] = useState(false);
 
+  const [documents, setDocuments] = useState<DocumentSummary[]>([]);
+  const [documentsLoading, setDocumentsLoading] = useState(false);
+  const [activeDocumentId, setActiveDocumentId] = useState<string | null>(null);
+  const [pages, setPages] = useState<ProcessedPage[]>([]);
+  const [annotations, setAnnotations] = useState<AnnotationRecord[]>([]);
+  const [pendingSnippet, setPendingSnippet] = useState<SelectionSnippet | null>(null);
+  const [activeAnnotationId, setActiveAnnotationId] = useState<string | null>(null);
+
+  const [chatScopes, setChatScopes] = useState<Record<string, ChatScope>>({ document: createDocumentScope() });
+  const [chatMessages, setChatMessages] = useState<Record<string, ChatMessage[]>>({ document: [] });
+  const [activeChatKey, setActiveChatKey] = useState('document');
+  const [chatLoading, setChatLoading] = useState(false);
+
   const processingRef = useRef(false);
-  const shouldStopRef = useRef(false);
+  const stopRef = useRef(false);
+  const saveTimerRef = useRef<number | null>(null);
 
-  const parsePageRange = (rangeStr: string, totalPages: number): number[] => {
-    const cleanStr = rangeStr.trim().toLowerCase();
-    if (!cleanStr || cleanStr === 'all' || cleanStr === '全部') {
-      return Array.from({ length: totalPages }, (_, i) => i + 1);
+  const refreshDocuments = async () => {
+    if (!session?.user) return;
+    setDocumentsLoading(true);
+    try {
+      setDocuments(await listDocumentsByUser());
+    } finally {
+      setDocumentsLoading(false);
     }
-
-    const result = new Set<number>();
-    const parts = cleanStr.split(/[,，]/);
-
-    parts.forEach((part) => {
-      const p = part.trim();
-      if (p.includes('-')) {
-        const [start, end] = p.split('-').map((num) => parseInt(num, 10));
-        if (!Number.isNaN(start) && !Number.isNaN(end)) {
-          for (let i = start; i <= end; i += 1) {
-            if (i >= 1 && i <= totalPages) result.add(i);
-          }
-        }
-      } else {
-        const pageNum = parseInt(p, 10);
-        if (!Number.isNaN(pageNum) && pageNum >= 1 && pageNum <= totalPages) {
-          result.add(pageNum);
-        }
-      }
-    });
-
-    return Array.from(result).sort((a, b) => a - b);
   };
 
-  const cropImageFromPage = async (base64Page: string, box: [number, number, number, number]): Promise<string> => {
-    return new Promise((resolve) => {
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        const PAD = 0;
-        let [ymin, xmin, ymax, xmax] = box;
-
-        ymin = Math.max(0, ymin - PAD);
-        xmin = Math.max(0, xmin - PAD);
-        ymax = Math.min(1000, ymax + PAD);
-        xmax = Math.min(1000, xmax + PAD);
-
-        const width = img.width;
-        const height = img.height;
-
-        const realX = (xmin / 1000) * width;
-        const realY = (ymin / 1000) * height;
-        const realW = ((xmax - xmin) / 1000) * width;
-        const realH = ((ymax - ymin) / 1000) * height;
-
-        canvas.width = realW;
-        canvas.height = realH;
-
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          ctx.drawImage(img, realX, realY, realW, realH, 0, 0, realW, realH);
-          resolve(canvas.toDataURL('image/png'));
-        } else {
-          resolve('');
-        }
-      };
-      img.src = base64Page;
-    });
-  };
-
-  const handleFileSelect = (file: File) => {
-    setSelectedFile(file);
-  };
-
-  const processPdf = async (file: File) => {
-    const runtimeApiKey = geminiApiKey.trim();
-    if (!runtimeApiKey) {
-      alert('请先输入 Gemini API Key。');
+  useEffect(() => {
+    if (!isSupabaseConfigured) {
+      setAuthReady(true);
       return;
     }
 
-    setStatus(AppStatus.PROCESSING);
-    setPages([]);
-    setProgressMsg('正在读取 PDF...');
-    shouldStopRef.current = false;
-
-    const fileReader = new FileReader();
-    fileReader.onload = async function onLoad() {
-      const typedarray = new Uint8Array(this.result as ArrayBuffer);
-
-      try {
-        // @ts-ignore
-        const pdf = await window.pdfjsLib.getDocument(typedarray).promise;
-        const totalPages = pdf.numPages;
-
-        const targetPageNumbers = parsePageRange(pageRange, totalPages);
-
-        if (targetPageNumbers.length === 0) {
-          alert('未找到有效页码，请检查页码范围。');
-          setStatus(AppStatus.IDLE);
-          return;
-        }
-
-        const newPages: ProcessedPage[] = [];
-
-        for (const pageNum of targetPageNumbers) {
-          const page = await pdf.getPage(pageNum);
-          const viewport = page.getViewport({ scale: 2.0 });
-          const canvas = document.createElement('canvas');
-          const context = canvas.getContext('2d');
-          canvas.height = viewport.height;
-          canvas.width = viewport.width;
-
-          if (context) {
-            await page.render({ canvasContext: context, viewport }).promise;
-            newPages.push({
-              pageNumber: pageNum,
-              originalImageUrl: canvas.toDataURL('image/jpeg', 0.8),
-              width: viewport.width,
-              height: viewport.height,
-              blocks: [],
-              status: 'pending',
-            });
-          }
-        }
-
-        setPages(newPages);
-        processPipeline(newPages, runtimeApiKey);
-      } catch (err) {
-        console.error(err);
-        setStatus(AppStatus.ERROR);
-        setProgressMsg('处理失败，请重试。');
-      }
+    let mounted = true;
+    supabase.auth.getSession().then(({ data }) => {
+      if (!mounted) return;
+      setSession(data.session);
+      setAuthReady(true);
+    });
+    const { data: listener } = supabase.auth.onAuthStateChange((_evt, next) => {
+      setSession(next);
+      setAuthReady(true);
+    });
+    return () => {
+      mounted = false;
+      listener.subscription.unsubscribe();
     };
-    fileReader.readAsArrayBuffer(file);
+  }, []);
+
+  useEffect(() => {
+    refreshDocuments();
+  }, [session?.user?.id]);
+
+  useEffect(() => {
+    if (!activeDocumentId || !pages.length) return;
+    if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = window.setTimeout(() => {
+      upsertDocumentPages(activeDocumentId, pages).catch(console.error);
+      updateDocumentMeta(activeDocumentId, { sourceLang, targetLang }).catch(console.error);
+    }, 900);
+  }, [pages, activeDocumentId, sourceLang, targetLang]);
+
+  const parsePageRange = (rangeStr: string, totalPages: number) => {
+    const clean = rangeStr.trim().toLowerCase();
+    if (!clean || clean === 'all') return Array.from({ length: totalPages }, (_, i) => i + 1);
+    const pagesSet = new Set<number>();
+    clean.split(/[,，]/).forEach((part) => {
+      if (!part.trim()) return;
+      if (part.includes('-')) {
+        const [s, e] = part.split('-').map((n) => parseInt(n, 10));
+        if (!Number.isNaN(s) && !Number.isNaN(e)) for (let i = s; i <= e; i += 1) if (i >= 1 && i <= totalPages) pagesSet.add(i);
+      } else {
+        const n = parseInt(part, 10);
+        if (!Number.isNaN(n) && n >= 1 && n <= totalPages) pagesSet.add(n);
+      }
+    });
+    return Array.from(pagesSet).sort((a, b) => a - b);
   };
 
-  const processPipeline = async (initialPages: ProcessedPage[], apiKey: string) => {
+  const cropImage = async (base64Page: string, box: [number, number, number, number]): Promise<string> => new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const [ymin, xmin, ymax, xmax] = box;
+      const canvas = document.createElement('canvas');
+      const x = (xmin / 1000) * img.width;
+      const y = (ymin / 1000) * img.height;
+      const w = ((xmax - xmin) / 1000) * img.width;
+      const h = ((ymax - ymin) / 1000) * img.height;
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return resolve('');
+      ctx.drawImage(img, x, y, w, h, 0, 0, w, h);
+      resolve(canvas.toDataURL('image/png'));
+    };
+    img.src = base64Page;
+  });
+
+  const processPipeline = async (initialPages: ProcessedPage[], docId: string) => {
     if (processingRef.current) return;
     processingRef.current = true;
-
-    const pagesCopy = [...initialPages];
-
     try {
-      for (let i = 0; i < pagesCopy.length; i += 1) {
-        if (shouldStopRef.current) break;
-
+      for (let i = 0; i < initialPages.length; i += 1) {
+        if (stopRef.current) break;
+        setProgress(`Analyzing page ${initialPages[i].pageNumber}...`);
         setPages((curr) => curr.map((p, idx) => (idx === i ? { ...p, status: 'analyzing' } : p)));
-        setProgressMsg(`第 ${pagesCopy[i].pageNumber} 页：结构分析中...`);
 
-        const blocks = await analyzePageLayout(
-          pagesCopy[i].originalImageUrl,
-          sourceLang,
-          targetLang,
-          apiKey,
-          customInstruction,
-        );
+        const blocks = harmonizeTypographyForBlocks(await analyzePageLayout(initialPages[i].originalImageUrl, sourceLang, targetLang, apiKey, customInstruction));
+        setPages((curr) => curr.map((p, idx) => (idx === i ? { ...p, status: 'generating_images', blocks } : p)));
 
-        if (shouldStopRef.current) {
-          setPages((curr) => curr.map((p, idx) => (idx === i ? { ...p, status: 'pending' } : p)));
-          break;
-        }
-
-        setPages((curr) => curr.map((p, idx) => (idx === i ? { ...p, blocks, status: 'generating_images' } : p)));
-
+        const updated = [...blocks];
         const imageBlocks = blocks.filter((b) => b.type === 'image' && b.box);
-
-        if (imageBlocks.length > 0) {
-          setProgressMsg(`第 ${pagesCopy[i].pageNumber} 页：图像重绘中（${imageBlocks.length} 张）...`);
-
-          const updatedBlocks = [...blocks];
-
-          for (const imgBlock of imageBlocks) {
-            if (shouldStopRef.current) break;
-            if (!imgBlock.box) continue;
-
-            const croppedBase64 = await cropImageFromPage(pagesCopy[i].originalImageUrl, imgBlock.box);
-            const translatedImgUrl = await translateImageBlock(croppedBase64, targetLang, apiKey);
-
-            if (translatedImgUrl) {
-              const blockIndex = updatedBlocks.findIndex((b) => b.id === imgBlock.id);
-              if (blockIndex !== -1) {
-                updatedBlocks[blockIndex] = { ...imgBlock, imageUrl: translatedImgUrl };
-                setPages((curr) => curr.map((p, idx) => (idx === i ? { ...p, blocks: updatedBlocks } : p)));
-              }
-            }
-          }
+        for (const imgBlock of imageBlocks) {
+          if (stopRef.current) break;
+          const crop = await cropImage(initialPages[i].originalImageUrl, imgBlock.box!);
+          const translated = await translateImageBlockWithRetry(crop, targetLang, apiKey, { retries: 3, initialDelayMs: 900 });
+          const idx = updated.findIndex((b) => b.id === imgBlock.id);
+          if (idx >= 0) updated[idx] = { ...updated[idx], imageUrl: translated ?? crop };
+          setPages((curr) => curr.map((p, pi) => (pi === i ? { ...p, blocks: updated } : p)));
         }
 
         setPages((curr) => curr.map((p, idx) => (idx === i ? { ...p, status: 'done' } : p)));
       }
-    } catch (err) {
-      console.error('Pipeline Error', err);
-    } finally {
       setStatus(AppStatus.COMPLETED);
-      setProgressMsg(shouldStopRef.current ? '已暂停' : '处理完成');
+      setProgress(stopRef.current ? 'Stopped' : 'Done');
+      await upsertDocumentPages(docId, pages);
+    } catch (error) {
+      console.error(error);
+      setStatus(AppStatus.ERROR);
+      setProgress('Pipeline failed');
+    } finally {
       processingRef.current = false;
     }
   };
 
-  const handleStop = () => {
-    shouldStopRef.current = true;
-    setProgressMsg('正在停止...');
+  const startProcessing = async (file: File) => {
+    if (!apiKey.trim()) return alert('Gemini API key required');
+    if (!session?.user) return alert('Sign in required');
+    setStatus(AppStatus.PROCESSING);
+    setProgress('Preparing...');
+    setAnnotations([]);
+    setPendingSnippet(null);
+    setChatScopes({ document: createDocumentScope() });
+    setChatMessages({ document: [] });
+    setActiveChatKey('document');
+    stopRef.current = false;
+
+    const doc = await createDocument({
+      userId: session.user.id,
+      title: file.name.replace(/\\.pdf$/i, ''),
+      sourceLang,
+      targetLang,
+      sourceFileName: file.name,
+    });
+    setActiveDocumentId(doc.id);
+    setDocuments((prev) => [doc, ...prev.filter((d) => d.id !== doc.id)]);
+    const sourcePath = await uploadSourcePdf(session.user.id, doc.id, file);
+    await updateDocumentMeta(doc.id, { sourceFilePath: sourcePath });
+
+    const reader = new FileReader();
+    reader.onload = async function onLoad() {
+      // @ts-ignore
+      const pdf = await window.pdfjsLib.getDocument(new Uint8Array(this.result as ArrayBuffer)).promise;
+      const targetPages = parsePageRange(pageRange, pdf.numPages);
+      const parsed: ProcessedPage[] = [];
+      for (const pageNum of targetPages) {
+        const page = await pdf.getPage(pageNum);
+        const viewport = page.getViewport({ scale: 2.0 });
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        if (!ctx) continue;
+        await page.render({ canvasContext: ctx, viewport }).promise;
+        parsed.push({ pageNumber: pageNum, originalImageUrl: canvas.toDataURL('image/jpeg', 0.8), width: viewport.width, height: viewport.height, blocks: [], status: 'pending' });
+      }
+      setPages(parsed);
+      processPipeline(parsed, doc.id);
+    };
+    reader.readAsArrayBuffer(file);
   };
 
-  const handleExportPDF = async () => {
-    if (isExporting || pages.length === 0) return;
+  const loadDocument = async (documentId: string) => {
+    const snapshot = await loadDocumentSnapshot(documentId);
+    setActiveDocumentId(documentId);
+    setStatus(snapshot.pages.length ? AppStatus.COMPLETED : AppStatus.IDLE);
+    setPages(snapshot.pages.map((p) => ({ ...p, status: 'done', blocks: harmonizeTypographyForBlocks(p.blocks) })));
+    setAnnotations(snapshot.annotations);
+    setSourceLang(snapshot.document.sourceLang);
+    setTargetLang(snapshot.document.targetLang);
+    const scopes: Record<string, ChatScope> = { document: createDocumentScope() };
+    snapshot.scopes.forEach((s) => { scopes[s.key] = s; });
+    setChatScopes(scopes);
+    setChatMessages({ document: snapshot.messagesByScopeKey.document ?? [], ...snapshot.messagesByScopeKey });
+    setActiveChatKey('document');
+  };
 
-    setIsExporting(true);
-    setProgressMsg('正在生成结构化 PDF...');
-
+  const sendChat = async (text: string) => {
+    if (!apiKey.trim()) return alert('Gemini API key required');
+    const scope = chatScopes[activeChatKey] ?? createDocumentScope();
+    const history = chatMessages[scope.key] ?? [];
+    const userTurn: ChatMessage = { role: 'user', text, createdAt: Date.now() };
+    setChatMessages((prev) => ({ ...prev, [scope.key]: [...(prev[scope.key] ?? []), userTurn] }));
+    setChatLoading(true);
     try {
-      const { exportStructuredPdf } = await import('./services/pdfExportService');
-      await exportStructuredPdf(pages, {
-        sourceFileName: selectedFile?.name,
-        onProgress: ({ current, total, pageNumber }) => {
-          setProgressMsg(`正在导出第 ${current}/${total} 页（原文第 ${pageNumber} 页）...`);
-        },
-      });
-      setProgressMsg('PDF 导出完成');
-    } catch (error) {
-      console.error('PDF 导出失败', error);
-      alert('导出失败，请稍后重试。');
+      const result = await chatWithTranslation({ scope, pages, history, userMessage: text, targetLang, apiKey });
+      if (result.actions.length) setPages((curr) => applyChatActions(curr, result.actions, scope));
+      const modelTurn: ChatMessage = { role: 'model', text: result.assistantReply, createdAt: Date.now() };
+      setChatMessages((prev) => ({ ...prev, [scope.key]: [...(prev[scope.key] ?? []), modelTurn] }));
+      if (session?.user && activeDocumentId) {
+        const thread = await ensureThread(session.user.id, activeDocumentId, scope);
+        await appendChatMessage(thread.id, userTurn);
+        await appendChatMessage(thread.id, modelTurn);
+      }
     } finally {
-      setIsExporting(false);
+      setChatLoading(false);
     }
   };
 
-  const handleUpdatePage = (pageNumber: number, newBlocks: LayoutBlock[]) => {
-    setPages((curr) => curr.map((p) => (p.pageNumber === pageNumber ? { ...p, blocks: newBlocks } : p)));
+  const createOrSelectScope = (scope: ChatScope) => {
+    setChatScopes((prev) => ({ ...prev, [scope.key]: scope }));
+    setChatMessages((prev) => (prev[scope.key] ? prev : { ...prev, [scope.key]: [] }));
+    setActiveChatKey(scope.key);
   };
+
+  const onSnippet = (snippet: SelectionSnippet) => {
+    setPendingSnippet(snippet);
+    createOrSelectScope({
+      key: `selection-${snippet.pageNumber}-${snippet.blockId}-${snippet.startOffset}-${snippet.endOffset}`,
+      kind: 'selection',
+      pageNumber: snippet.pageNumber,
+      blockId: snippet.blockId,
+      selectedText: snippet.selectedText,
+      label: `Selection P${snippet.pageNumber}`,
+    });
+  };
+
+  const saveSnippetAnnotation = async (note: string, color: string) => {
+    if (!activeDocumentId || !pendingSnippet) return;
+    const created = await saveAnnotation({ documentId: activeDocumentId, snippet: pendingSnippet, note, color });
+    setAnnotations((prev) => [...prev, created]);
+    setActiveAnnotationId(created.id);
+    setPendingSnippet(null);
+  };
+
+  const updateAnnotationNote = async (annotationId: string, note: string) => {
+    const item = annotations.find((a) => a.id === annotationId);
+    if (!item) return;
+    const updated = await saveAnnotation({
+      documentId: item.documentId,
+      annotationId: item.id,
+      snippet: { pageNumber: item.pageNumber, blockId: item.blockId, selectedText: item.selectedText, startOffset: item.startOffset, endOffset: item.endOffset },
+      note,
+      color: item.color,
+    });
+    setAnnotations((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
+  };
+
+  const exportPdf = async () => {
+    if (!pages.length || isExporting) return;
+    setIsExporting(true);
+    const { exportStructuredPdf } = await import('./services/pdfExportService');
+    await exportStructuredPdf(pages, {
+      sourceFileName: selectedFile?.name || 'document',
+      onBlob: async (blob, filename) => {
+        if (!session?.user || !activeDocumentId) return;
+        const path = await uploadExportedPdf(session.user.id, activeDocumentId, blob, filename);
+        await updateDocumentMeta(activeDocumentId, { exportedFilePath: path });
+      },
+    });
+    setIsExporting(false);
+  };
+
+  const annotationByBlock = useMemo(() => {
+    const map: Record<string, AnnotationRecord[]> = {};
+    annotations.forEach((item) => {
+      map[item.blockId] = map[item.blockId] ?? [];
+      map[item.blockId].push(item);
+    });
+    return map;
+  }, [annotations]);
+
+  if (!isSupabaseConfigured) {
+    return <div className="min-h-screen flex items-center justify-center">Missing VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY</div>;
+  }
+  if (!authReady) {
+    return <div className="min-h-screen flex items-center justify-center"><Loader2 className="w-5 h-5 animate-spin" /></div>;
+  }
+  if (!session) return <AuthPanel />;
 
   return (
     <div className="min-h-screen bg-[#f2f2f2] text-[#111]">
-      <nav className="fixed top-0 left-0 right-0 z-50 px-6 md:px-8 py-4 flex justify-between items-center bg-[#f2f2f2]/90 backdrop-blur-sm border-b border-gray-200/50 no-print">
-        <div className="flex items-center gap-4">
-          <div className="font-serif font-bold text-xl tracking-tighter">译构 PDF</div>
-          <div className="hidden md:block w-px h-4 bg-gray-300" />
-          <div className="hidden md:block font-sans text-[10px] tracking-[0.2em] text-gray-400">AI 版式重构</div>
-        </div>
-
-        {status === AppStatus.COMPLETED && (
-          <button
-            onClick={handleExportPDF}
-            disabled={isExporting}
-            className="group flex items-center gap-2 bg-black text-white px-5 py-2.5 rounded-full hover:bg-gray-800 transition-all active:scale-95 shadow-lg hover:shadow-xl disabled:opacity-60 disabled:cursor-not-allowed"
-          >
-            {isExporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-            <span className="text-xs font-bold tracking-wider">{isExporting ? '生成中...' : '结构化导出 PDF'}</span>
+      <header className="fixed top-0 left-0 right-0 z-50 bg-[#f2f2f2] border-b border-gray-200 px-4 py-2 flex justify-between items-center">
+        <div className="font-semibold">AI PDF Translator</div>
+        <div className="flex items-center gap-2">
+          <button onClick={exportPdf} className="px-3 py-1.5 rounded-full bg-black text-white text-xs disabled:opacity-50" disabled={isExporting || !pages.length}>
+            {isExporting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
           </button>
-        )}
-      </nav>
+          <button onClick={() => { supabase.auth.signOut(); }} className="p-2 rounded-full border border-gray-200 bg-white"><LogOut className="w-4 h-4" /></button>
+        </div>
+      </header>
 
-      <main className="pt-24 md:pt-28 px-4 max-w-6xl mx-auto pb-12">
-        {status === AppStatus.IDLE && (
-          <div className="animate-fade-in-up mt-3 md:mt-4 no-print">
-            <h1 className="text-4xl md:text-5xl font-serif font-thin text-center mb-3 tracking-tight leading-[0.95]">
-              重构
-              <br />
-              <span className="text-gray-400 italic">文档阅读体验</span>
-            </h1>
-            <p className="text-center font-sans text-xs tracking-[0.12em] text-gray-400 mb-4">PDF 智能解析与网页化排版</p>
+      <main className="pt-16 px-4 pb-20 max-w-[1600px] mx-auto grid grid-cols-1 lg:grid-cols-[280px_1fr_320px] gap-4">
+        <DocumentLibrary
+          documents={documents}
+          activeDocumentId={activeDocumentId}
+          loading={documentsLoading}
+          onReload={refreshDocuments}
+          onOpen={loadDocument}
+          onDelete={async (id) => {
+            if (!window.confirm('Delete this document and all related data?')) return;
+            await deleteDocument(id);
+            setDocuments((prev) => prev.filter((d) => d.id !== id));
+            if (activeDocumentId === id) {
+              setStatus(AppStatus.IDLE);
+              setPages([]);
+              setAnnotations([]);
+              setActiveDocumentId(null);
+              setChatScopes({ document: createDocumentScope() });
+              setChatMessages({ document: [] });
+              setActiveChatKey('document');
+            }
+          }}
+          onNew={() => {
+            setStatus(AppStatus.IDLE);
+            setPages([]);
+            setAnnotations([]);
+            setPendingSnippet(null);
+            setActiveAnnotationId(null);
+            setActiveDocumentId(null);
+            setChatScopes({ document: createDocumentScope() });
+            setChatMessages({ document: [] });
+            setActiveChatKey('document');
+            setSelectedFile(null);
+          }}
+        />
 
-            <LanguageSelector
-              sourceLang={sourceLang}
-              targetLang={targetLang}
-              setSourceLang={setSourceLang}
-              setTargetLang={setTargetLang}
-              disabled={false}
-            />
-
-            <div className="max-w-4xl mx-auto mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="bg-white/75 rounded-2xl border border-gray-100 p-4">
-                <div className="flex items-center gap-2 mb-3 justify-center">
-                  <KeyRound className="w-3 h-3 text-gray-400" />
-                  <label className="text-[10px] font-sans text-gray-400 tracking-[0.2em]">Gemini API Key</label>
-                </div>
-                <input
-                  type="password"
-                  value={geminiApiKey}
-                  onChange={(e) => setGeminiApiKey(e.target.value)}
-                  placeholder="请输入你的 Gemini API Key"
-                  autoComplete="off"
-                  spellCheck={false}
-                  className="w-full text-center bg-transparent border-b border-gray-200 py-1.5 text-base font-sans focus:border-black focus:outline-none transition-colors placeholder:text-gray-300"
-                />
-                <p className="text-center text-[10px] text-gray-400 mt-1.5">仅在当前页面内存中使用，不写入代码和构建产物。</p>
-              </div>
-
-              <div className="bg-white/75 rounded-2xl border border-gray-100 p-4">
-                <div className="flex items-center gap-2 mb-3 justify-center">
-                  <Layers className="w-3 h-3 text-gray-400" />
-                  <label className="text-[10px] font-sans text-gray-400 tracking-[0.2em]">页码范围</label>
-                </div>
-                <input
-                  type="text"
-                  value={pageRange}
-                  onChange={(e) => setPageRange(e.target.value)}
-                  placeholder="例如：1-5，8，11-13（默认：全部）"
-                  className="w-full text-center bg-transparent border-b border-gray-200 py-1.5 text-lg font-serif focus:border-black focus:outline-none transition-colors placeholder:text-gray-300"
-                />
-                <p className="text-center text-[10px] text-gray-400 mt-1.5">留空或填写“全部”表示整份文档，也可输入区间。</p>
-              </div>
-            </div>
-
-            <div className="max-w-3xl mx-auto mt-4">
-              {!selectedFile ? (
-                <FileUpload onFileSelect={handleFileSelect} />
-              ) : (
-                <div className="flex flex-col items-center gap-6 animate-fade-in">
-                  <div className="flex items-center gap-3 p-4 rounded-2xl bg-white border border-gray-100 shadow-soft w-full max-w-lg transition-transform hover:scale-[1.01]">
-                    <div className="w-10 h-10 bg-gray-50 rounded-xl flex items-center justify-center shrink-0">
-                      <FileText className="w-5 h-5 text-gray-600" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <h3 className="font-serif text-base truncate text-gray-900">{selectedFile.name}</h3>
-                      <p className="text-[10px] tracking-wider text-gray-400 font-sans">{(selectedFile.size / (1024 * 1024)).toFixed(2)} MB</p>
-                    </div>
-                    <button
-                      onClick={() => setSelectedFile(null)}
-                      className="p-2 hover:bg-red-50 text-gray-400 hover:text-red-500 rounded-lg transition-colors group"
-                      title="移除文件"
-                    >
-                      <Trash2 className="w-5 h-5 transition-colors" />
-                    </button>
-                  </div>
-
-                  <button
-                    onClick={() => processPdf(selectedFile)}
-                    disabled={!geminiApiKey.trim()}
-                    title={!geminiApiKey.trim() ? '请先输入 Gemini API Key' : '开始重构'}
-                    className="group relative flex items-center gap-3 px-3 py-1.5 text-2xl font-serif text-black hover:opacity-70 transition-all cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
-                  >
-                    <span className="relative">
-                      开始重构
-                      <span className="absolute left-0 bottom-0 w-full h-0.5 bg-black scale-x-0 group-hover:scale-x-100 transition-transform duration-300 origin-left" />
-                    </span>
-                    <ArrowRight className="w-6 h-6 transition-transform duration-300 group-hover:translate-x-3" />
-                  </button>
+        <section>
+          {status === AppStatus.IDLE && (
+            <div className="space-y-4">
+              <LanguageSelector sourceLang={sourceLang} targetLang={targetLang} setSourceLang={setSourceLang} setTargetLang={setTargetLang} disabled={false} />
+              <input className="w-full border border-gray-200 rounded-xl px-3 py-2" placeholder="Gemini API key" value={apiKey} onChange={(e) => setApiKey(e.target.value)} />
+              <input className="w-full border border-gray-200 rounded-xl px-3 py-2" placeholder="Page range: all or 1-3,8" value={pageRange} onChange={(e) => setPageRange(e.target.value)} />
+              <textarea className="w-full h-20 border border-gray-200 rounded-xl px-3 py-2" placeholder="Custom instruction (optional)" value={customInstruction} onChange={(e) => setCustomInstruction(e.target.value)} />
+              {!selectedFile ? <FileUpload onFileSelect={setSelectedFile} /> : (
+                <div className="space-y-3">
+                  <div className="text-sm">Selected: {selectedFile.name}</div>
+                  <button className="px-4 py-2 rounded-xl bg-black text-white" onClick={() => startProcessing(selectedFile)}>Start</button>
                 </div>
               )}
             </div>
+          )}
 
-            <div className="max-w-3xl mx-auto mt-3">
-              <label className="block text-[10px] font-sans text-gray-400 tracking-[0.2em] mb-2 text-center">AI 自定义要求（可选）</label>
-              <textarea
-                value={customInstruction}
-                onChange={(e) => setCustomInstruction(e.target.value)}
-                placeholder="例如：保留专有名词、使用正式语气、忽略图片内容等。"
-                className="w-full h-16 md:h-20 bg-white border border-gray-200 rounded-2xl px-4 py-2.5 text-sm font-sans resize-none focus:outline-none focus:border-black focus:ring-1 focus:ring-black/10 transition-all shadow-soft"
-              />
-            </div>
-          </div>
-        )}
-
-        {(status === AppStatus.PROCESSING || status === AppStatus.COMPLETED) && (
-          <div className="animate-fade-in flex flex-col gap-12 items-center">
-            <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 status-pill no-print flex gap-2">
-              <div className="bg-black/90 backdrop-blur text-white pl-6 pr-2 py-2 rounded-full shadow-2xl flex items-center gap-3 min-w-[300px] justify-between">
-                <div className="flex items-center gap-3">
-                  {status === AppStatus.PROCESSING && <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />}
-                  <p className="font-sans text-[10px] font-bold tracking-widest uppercase truncate max-w-[200px]">{progressMsg}</p>
-                </div>
-
+          {status !== AppStatus.IDLE && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between bg-black text-white px-3 py-2 rounded-xl text-xs">
+                <span>{progress}</span>
                 {status === AppStatus.PROCESSING && (
-                  <button
-                    onClick={handleStop}
-                    className="bg-white/10 hover:bg-red-500/80 p-2 rounded-full transition-colors group"
-                    title="停止并结束"
-                  >
-                    <Square className="w-3 h-3 text-white fill-white" />
-                  </button>
+                  <button onClick={() => { stopRef.current = true; }}><Square className="w-3 h-3" /></button>
                 )}
               </div>
-            </div>
-
-            <div className="w-full flex flex-col items-center gap-8">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  className={`px-3 py-1.5 text-xs rounded-full border ${viewMode === 'translation' ? 'bg-black text-white border-black' : 'bg-white text-gray-600 border-gray-200'}`}
+                  onClick={() => setViewMode('translation')}
+                >
+                  译文视图
+                </button>
+                <button
+                  type="button"
+                  className={`px-3 py-1.5 text-xs rounded-full border ${viewMode === 'bilingual' ? 'bg-black text-white border-black' : 'bg-white text-gray-600 border-gray-200'}`}
+                  onClick={() => setViewMode('bilingual')}
+                >
+                  中英对照
+                </button>
+              </div>
               {pages.map((page) => (
                 <PageRenderer
                   key={page.pageNumber}
                   page={page}
                   targetLang={targetLang}
-                  apiKey={geminiApiKey}
-                  onUpdatePage={handleUpdatePage}
+                  apiKey={apiKey}
+                  viewMode={viewMode}
+                  onUpdatePage={(pageNumber, blocks) => setPages((prev) => prev.map((p) => (p.pageNumber === pageNumber ? { ...p, blocks } : p)))}
+                  onStartPageChat={(pageNumber) => createOrSelectScope({ key: `page-${pageNumber}`, kind: 'page', pageNumber, label: `Page ${pageNumber}` })}
+                  onSelectSnippet={onSnippet}
+                  annotationsByBlockId={annotationByBlock}
+                  activeAnnotationId={activeAnnotationId}
+                  onActivateAnnotation={setActiveAnnotationId}
                 />
               ))}
             </div>
-          </div>
-        )}
+          )}
+        </section>
+
+        <AnnotationPanel
+          annotations={annotations}
+          activeAnnotationId={activeAnnotationId}
+          pendingSnippet={pendingSnippet}
+          onCreate={saveSnippetAnnotation}
+          onDelete={async (id) => { await deleteAnnotation(id); setAnnotations((prev) => prev.filter((a) => a.id !== id)); }}
+          onUpdateNote={updateAnnotationNote}
+          onFocusAnnotation={(id) => { setActiveAnnotationId(id); }}
+        />
       </main>
+
+      {pages.length > 0 && (
+        <TranslationChatPanel
+          scopes={sortScopes(Object.values(chatScopes))}
+          activeScopeKey={activeChatKey}
+          messages={chatMessages[activeChatKey] ?? []}
+          loading={chatLoading}
+          onSwitchScope={setActiveChatKey}
+          onSendMessage={sendChat}
+        />
+      )}
     </div>
   );
 };
 
 export default App;
-
-
-
-

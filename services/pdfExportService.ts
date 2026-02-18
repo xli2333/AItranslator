@@ -1,6 +1,7 @@
 ﻿import { PDFDocument, PDFFont, PDFImage, PDFPage, rgb } from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
 import { LayoutBlock, ProcessedPage } from '../types';
+import { getTypographyScale, harmonizeTypographyForBlocks } from './typographyService';
 
 type FontPack = {
   sans: PDFFont;
@@ -57,6 +58,7 @@ type ExportProgress = {
 type ExportStructuredPdfOptions = {
   sourceFileName?: string;
   onProgress?: (progress: ExportProgress) => void;
+  onBlob?: (blob: Blob, fileName: string) => void | Promise<void>;
 };
 
 const A4_WIDTH = 595.28;
@@ -286,13 +288,13 @@ const getEmbeddedImage = async (
   return image;
 };
 
-const scaleStyle = (base: BaseTextStyle, scale: number): ScaledTextStyle => ({
+const scaleStyle = (base: BaseTextStyle, pageScale: number, blockScale = 1): ScaledTextStyle => ({
   ...base,
-  size: Math.max(base.size * scale, 6),
-  marginTop: base.marginTop * scale,
-  marginBottom: base.marginBottom * scale,
-  indent: base.indent * scale,
-  imageMaxHeight: base.imageMaxHeight ? base.imageMaxHeight * scale : undefined,
+  size: Math.max(base.size * pageScale * blockScale, 6),
+  marginTop: base.marginTop * pageScale,
+  marginBottom: base.marginBottom * pageScale,
+  indent: base.indent * pageScale,
+  imageMaxHeight: base.imageMaxHeight ? base.imageMaxHeight * pageScale : undefined,
 });
 
 const planTextBlock = (
@@ -400,7 +402,8 @@ const buildPagePlan = async (
   let usedHeight = 0;
 
   for (const block of blocks) {
-    const style = scaleStyle(baseStyleMap[block.type] ?? baseStyleMap.paragraph, scale);
+    const typeBase = baseStyleMap[block.type] ?? baseStyleMap.paragraph;
+    const style = scaleStyle(typeBase, scale, getTypographyScale(block));
 
     if (block.type === 'image') {
       const planned = await planImageBlock(pdfDoc, imageCache, block, style, fonts);
@@ -624,7 +627,7 @@ export const exportStructuredPdf = async (
     throw new Error('暂无可导出的页面内容。');
   }
 
-  const { sourceFileName, onProgress } = normalizeOptions(options);
+  const { sourceFileName, onProgress, onBlob } = normalizeOptions(options);
 
   const sortedPages = [...pages].sort((a, b) => a.pageNumber - b.pageNumber);
 
@@ -641,13 +644,14 @@ export const exportStructuredPdf = async (
       pageNumber: processed.pageNumber,
     });
 
-    const blocks = processed.blocks.length > 0
+    const sourceBlocks = processed.blocks.length > 0
       ? processed.blocks
       : [{
           id: `empty-${processed.pageNumber}`,
           type: 'paragraph' as const,
           content: '该页面没有可导出的结构化内容。',
         }];
+    const blocks = harmonizeTypographyForBlocks(sourceBlocks);
 
     const { plans } = await buildFittedPagePlan(pdfDoc, imageCache, fonts, blocks);
 
@@ -673,6 +677,7 @@ export const exportStructuredPdf = async (
   const baseName = sanitizeFileName(sourceFileName || '导出文档');
   anchor.href = url;
   anchor.download = `${baseName || '导出文档'}-结构化导出.pdf`;
+  await onBlob?.(blob, anchor.download);
   document.body.appendChild(anchor);
   anchor.click();
   anchor.remove();
@@ -683,3 +688,4 @@ export const exportStructuredPdf = async (
 
   return anchor.download;
 };
+

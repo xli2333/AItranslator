@@ -2,7 +2,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 
-// Initialize PDF.js worker
+// Initialize PDF.js worker.
 // @ts-ignore
 if (window.pdfjsLib) {
   // @ts-ignore
@@ -11,12 +11,11 @@ if (window.pdfjsLib) {
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
-  throw new Error('未找到用于挂载应用的根节点');
+  throw new Error('Root element not found.');
 }
 
-const root = ReactDOM.createRoot(rootElement);
-root.render(
+ReactDOM.createRoot(rootElement).render(
   <React.StrictMode>
     <App />
-  </React.StrictMode>
+  </React.StrictMode>,
 );

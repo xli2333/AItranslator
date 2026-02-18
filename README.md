@@ -1,35 +1,54 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# AItranslator
 
-# Run and deploy your AI Studio app
+PDF translation workspace with:
 
-This contains everything you need to run your app locally.
+- Hierarchical typography reconstruction
+- Image translation retry
+- Chat in three scopes (document/page/selection)
+- Professional bilingual reading mode (English source on left, Chinese translation on right)
+- Sentence-level cross highlight (select Chinese sentence to highlight aligned English sentence)
+- Selection highlight + annotations
+- Supabase auth, database, and private storage
 
-View your app in AI Studio: https://ai.studio/apps/drive/1tyrOW2jLQfg8mXD61ivwF9jT_F_R2S7a
+## 1. Install
 
-## Run Locally
+```bash
+npm install
+```
 
-**Prerequisites:**  Node.js
+## 2. Configure Supabase
 
+Create `.env.local` from `.env.example`:
 
-1. Install dependencies:
-   `npm install`
-2. Run the app:
-   `npm run dev`
-3. Enter your Gemini API Key in the homepage input field at runtime (it is not embedded into source code or build config).
+```bash
+cp .env.example .env.local
+```
 
-## PDF Export Notes
+Set:
 
-- Export now uses structured PDF rendering (`pdf-lib`) instead of browser print.
-- Each web page card maps to exactly one PDF page.
-- Chinese serif font is loaded from `public/fonts/` at export time:
-  - `NotoSerifCJKsc-Regular.otf`
+- `VITE_SUPABASE_URL`
+- `VITE_SUPABASE_ANON_KEY`
 
-## Deploy to Vercel
+Then run SQL in Supabase SQL Editor:
 
-- This repo includes `vercel.json` with:
-  - `framework: vite`
-  - output directory `dist`
-  - SPA fallback routing (`/.* -> /index.html` after filesystem check)
-- In Vercel dashboard, import this GitHub repo and keep default build settings.
+- `supabase/schema.sql`
+
+This creates tables, indices, storage bucket, and RLS policies (owner-only access).
+
+## 3. Run
+
+```bash
+npm run dev
+```
+
+## 4. Build
+
+```bash
+npm run build
+```
+
+## Notes
+
+- Gemini API key is entered at runtime in UI.
+- All document/chat/annotation data is user-private through RLS.
+- PDF export outputs translation pages only.
