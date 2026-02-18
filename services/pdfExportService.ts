@@ -68,7 +68,6 @@ const PAGE_MARGIN_X = 42;
 const CONTENT_WIDTH = A4_WIDTH - PAGE_MARGIN_X * 2;
 const CONTENT_HEIGHT = A4_HEIGHT - PAGE_MARGIN_TOP - PAGE_MARGIN_BOTTOM;
 
-const FONT_SANS_PATH = '/fonts/NotoSansCJKsc-Regular.otf';
 const FONT_SERIF_PATH = '/fonts/NotoSerifCJKsc-Regular.otf';
 
 const toRgb = (r: number, g: number, b: number) => rgb(r / 255, g / 255, b / 255);
@@ -587,26 +586,16 @@ const drawPageFooterNumber = (page: PDFPage, fonts: FontPack, pageNumber: number
 const loadFonts = async (pdfDoc: PDFDocument): Promise<FontPack> => {
   pdfDoc.registerFontkit(fontkit);
 
-  const [sansRes, serifRes] = await Promise.all([
-    fetch(FONT_SANS_PATH),
-    fetch(FONT_SERIF_PATH),
-  ]);
-
-  if (!sansRes.ok || !serifRes.ok) {
-    throw new Error('中文字体加载失败，请确认 public/fonts 下字体文件完整。');
+  const serifRes = await fetch(FONT_SERIF_PATH);
+  if (!serifRes.ok) {
+    throw new Error('衬线中文字体加载失败，请确认 public/fonts 字体文件完整。');
   }
 
-  const [sansBytes, serifBytes] = await Promise.all([
-    sansRes.arrayBuffer(),
-    serifRes.arrayBuffer(),
-  ]);
+  const serifBytes = await serifRes.arrayBuffer();
+  const serif = await pdfDoc.embedFont(serifBytes, { subset: true });
 
-  const [sans, serif] = await Promise.all([
-    pdfDoc.embedFont(sansBytes, { subset: false }),
-    pdfDoc.embedFont(serifBytes, { subset: false }),
-  ]);
-
-  return { sans, serif };
+  // 导出只使用一套衬线字体，减少 PDF 体积并统一字形。
+  return { sans: serif, serif };
 };
 
 const sanitizeFileName = (name: string) =>

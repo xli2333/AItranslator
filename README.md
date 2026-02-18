@@ -23,8 +23,7 @@ View your app in AI Studio: https://ai.studio/apps/drive/1tyrOW2jLQfg8mXD61ivwF9
 
 - Export now uses structured PDF rendering (`pdf-lib`) instead of browser print.
 - Each web page card maps to exactly one PDF page.
-- Chinese fonts are loaded from `public/fonts/` at export time:
-  - `NotoSansCJKsc-Regular.otf`
+- Chinese serif font is loaded from `public/fonts/` at export time:
   - `NotoSerifCJKsc-Regular.otf`
 
 ## Deploy to Vercel
