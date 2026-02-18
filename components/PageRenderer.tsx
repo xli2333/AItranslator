@@ -87,7 +87,7 @@ const renderAnnotatedText = (
           key={annotation.id}
           className={`cursor-pointer rounded px-0.5 ${annotation.id === activeAnnotationId ? 'ring-1 ring-black' : ''}`}
           style={{ backgroundColor: annotation.color || '#fde68a' }}
-          title={annotation.note || 'annotation'}
+          title={annotation.note || '标注'}
           onClick={() => onActivate(annotation.id)}
         >
           {slice}
@@ -162,14 +162,14 @@ const BilingualTextBlock: React.FC<{
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
-      <div className="rounded-xl border border-gray-200 bg-gray-50/50 px-4 py-3">
-        <div className="text-[10px] uppercase tracking-[0.2em] text-gray-400 mb-2">English Source</div>
+      <div className="rounded-2xl bg-white/60 px-4 py-3 shadow-sm">
+        <div className="text-[10px] tracking-[0.2em] text-gray-500 mb-2">原文</div>
         {sourceSentences.length > 0 ? sourceSentences.map((sentence) => (
           <span
             key={`src-${block.id}-${sentence.index}`}
             data-column="source"
             data-sentence-index={sentence.index}
-            className={`inline ${linkedSourceSentence === sentence.index ? 'bg-blue-200/80 rounded px-0.5' : ''}`}
+            className={`inline ${linkedSourceSentence === sentence.index ? 'bg-sky-200/80 rounded px-0.5' : ''}`}
           >
             {sentence.text}
             {' '}
@@ -177,15 +177,15 @@ const BilingualTextBlock: React.FC<{
         )) : sourceFallback}
       </div>
 
-      <div className="rounded-xl border border-gray-200 bg-white px-4 py-3">
-        <div className="text-[10px] uppercase tracking-[0.2em] text-gray-400 mb-2">Chinese Translation</div>
+      <div className="rounded-2xl bg-white/85 px-4 py-3 shadow-sm">
+        <div className="text-[10px] tracking-[0.2em] text-gray-500 mb-2">译文</div>
         <div data-block-text="true" data-column="target">
           {targetSentences.length > 0 ? targetSentences.map((sentence) => (
             <span
               key={`tgt-${block.id}-${sentence.index}`}
               data-column="target"
               data-sentence-index={sentence.index}
-              className={`inline ${linkedTargetSentence === sentence.index ? 'bg-blue-200/80 rounded px-0.5' : ''} ${
+              className={`inline ${linkedTargetSentence === sentence.index ? 'bg-sky-200/80 rounded px-0.5' : ''} ${
                 sentenceOverlapWithAnnotations(sentence, annotations) ? 'underline decoration-yellow-400 decoration-2' : ''
               }`}
             >
@@ -202,7 +202,7 @@ const BilingualTextBlock: React.FC<{
                 type="button"
                 key={item.id}
                 className={`text-left block w-full rounded-md px-2 py-1 text-xs ${
-                  item.id === activeAnnotationId ? 'bg-gray-100 text-black' : 'text-gray-500 hover:bg-gray-50'
+                  item.id === activeAnnotationId ? 'bg-gray-100 text-black' : 'text-gray-500 hover:bg-white'
                 }`}
                 onClick={(e) => e.preventDefault()}
               >
@@ -259,36 +259,36 @@ const BlockRenderer: React.FC<{
   switch (block.type) {
     case 'header':
       return (
-        <div className="w-full border-b border-gray-100 pb-2 mb-8 flex justify-between items-center tracking-[0.2em] text-gray-400 font-sans" style={typoStyle}>
+        <div className="w-full pb-2 mb-8 flex justify-between items-center tracking-[0.2em] text-gray-400 font-sans" style={typoStyle}>
           {translationText}
-          <span className="w-2 h-2 rounded-full bg-gray-100" />
+          <span className="w-2 h-2 rounded-full bg-black/10" />
         </div>
       );
     case 'footer':
       return (
-        <div className="w-full border-t border-gray-100 pt-6 mt-12 flex justify-center text-gray-400 font-sans tracking-wider" style={typoStyle}>
+        <div className="w-full pt-6 mt-12 flex justify-center text-gray-400 font-sans tracking-wider" style={typoStyle}>
           {translationText}
         </div>
       );
     case 'h1':
       return <h1 className="font-serif font-medium text-gray-900 mb-8 mt-10 tracking-tight" style={typoStyle}>{translationText}</h1>;
     case 'h2':
-      return <h2 className="font-sans font-bold text-black mb-4 mt-12 tracking-wide border-l-4 border-black pl-4" style={typoStyle}>{translationText}</h2>;
+      return <h2 className="font-sans font-bold text-black mb-4 mt-12 tracking-wide pl-4 relative before:absolute before:left-0 before:top-[0.2em] before:h-[1.2em] before:w-1.5 before:rounded-full before:bg-black/70" style={typoStyle}>{translationText}</h2>;
     case 'h3':
       return <h3 className="font-serif font-bold text-gray-800 mb-3 mt-8" style={typoStyle}>{translationText}</h3>;
     case 'paragraph':
       return <p className="font-serif text-gray-600 mb-6 text-justify" style={typoStyle}>{translationText}</p>;
     case 'quote':
       return (
-        <blockquote className="my-10 border-l-2 border-accent pl-6 py-2">
+        <blockquote className="my-10 pl-6 py-2 relative before:absolute before:left-0 before:top-2 before:h-[80%] before:w-px before:bg-black/35">
           <p className="font-serif italic text-gray-800" style={typoStyle}>{translationText}</p>
         </blockquote>
       );
     case 'callout':
       return (
-        <div className="my-8 p-8 bg-gray-50 rounded-xl border border-gray-100 shadow-sm relative overflow-hidden group">
+        <div className="my-8 p-8 bg-white/80 rounded-2xl shadow-md relative overflow-hidden group">
           <div className="absolute top-0 right-0 w-16 h-16 bg-gray-200/20 rounded-bl-full -mr-8 -mt-8 transition-transform group-hover:scale-150 duration-500" />
-          <h4 className="font-sans font-bold tracking-widest text-gray-400 mb-4" style={{ fontSize: `${calloutLabelSize.toFixed(1)}px` }}>Note</h4>
+          <h4 className="font-sans font-bold tracking-widest text-gray-400 mb-4" style={{ fontSize: `${calloutLabelSize.toFixed(1)}px` }}>注释</h4>
           <div className="font-serif text-gray-800" style={typoStyle}>{translationText}</div>
         </div>
       );
@@ -301,7 +301,7 @@ const BlockRenderer: React.FC<{
       );
     case 'caption':
       return (
-        <p className="font-sans text-gray-400 text-center tracking-wider mb-8 mt-3 border-b border-gray-100 pb-4 inline-block mx-auto" style={typoStyle}>
+        <p className="font-sans text-gray-400 text-center tracking-wider mb-8 mt-3 pb-4 inline-block mx-auto" style={typoStyle}>
           {translationText}
         </p>
       );
@@ -310,11 +310,11 @@ const BlockRenderer: React.FC<{
         <figure className="my-12 w-[110%] -ml-[5%] flex flex-col items-center print:w-full print:ml-0">
           <div className="relative w-full rounded-lg transition-all duration-500 hover:shadow-xl bg-white">
             {block.imageUrl ? (
-              <img src={block.imageUrl} alt="translated visual block" className="w-full h-auto rounded-lg shadow-soft" />
+              <img src={block.imageUrl} alt="译文图片块" className="w-full h-auto rounded-lg shadow-soft" />
             ) : (
-              <div className="w-full aspect-video flex flex-col items-center justify-center bg-gray-50/50 rounded-lg border border-gray-100">
+              <div className="w-full aspect-video flex flex-col items-center justify-center bg-gray-50/50 rounded-lg">
                 <div className="w-12 h-12 border-2 border-gray-200 border-t-black rounded-full animate-spin mb-4" />
-                <span className="font-sans tracking-[0.2em] text-gray-400" style={typoStyle}>Rendering image...</span>
+                <span className="font-sans tracking-[0.2em] text-gray-400" style={typoStyle}>正在渲染图片</span>
               </div>
             )}
           </div>
@@ -352,7 +352,7 @@ const PageRenderer: React.FC<Props> = ({
     e.preventDefault();
     if (!prompt.trim() || loading) return;
     if (!apiKey.trim()) {
-      alert('Gemini API key is required for page edit.');
+      alert('请先输入 Gemini 密钥，再进行页面改写。');
       return;
     }
 
@@ -363,7 +363,7 @@ const PageRenderer: React.FC<Props> = ({
       setPrompt('');
       setIsEditing(false);
     } catch (err) {
-      console.error('Edit failed', err);
+      console.error('页面改写失败', err);
     } finally {
       setLoading(false);
     }
@@ -454,22 +454,22 @@ const PageRenderer: React.FC<Props> = ({
   };
 
   return (
-    <div className="page-container w-full bg-white shadow-2xl shadow-gray-200/50 rounded-lg mb-24 overflow-hidden relative break-inside-avoid group/page" id={`page-${page.pageNumber}`}>
+    <div className="page-container w-full bg-white/84 rounded-[1.8rem] mb-24 overflow-hidden relative break-inside-avoid group/page shadow-[0_26px_64px_-26px_rgba(0,0,0,0.35)] backdrop-blur-sm" id={`page-${page.pageNumber}`}>
       <div className="pointer-events-none absolute inset-0 opacity-[0.03] mix-blend-multiply no-print" style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E")` }} />
 
       {page.status === 'done' && !isEditing && (
         <div className="absolute top-4 right-4 z-20 flex items-center gap-2 opacity-0 group-hover/page:opacity-100 transition-all no-print">
           <button
             onClick={() => onStartPageChat(page.pageNumber)}
-            className="p-2 bg-white/80 backdrop-blur rounded-full text-gray-400 hover:text-black hover:bg-white shadow-sm border border-transparent hover:border-gray-200 transition-all"
-            title="Chat this page"
+            className="p-2 bg-white/90 backdrop-blur rounded-full text-gray-500 hover:text-black hover:bg-white shadow-sm transition-all"
+            title="页面对话"
           >
             <MessageCircle className="w-4 h-4" />
           </button>
           <button
             onClick={() => setIsEditing(true)}
-            className="p-2 bg-white/80 backdrop-blur rounded-full text-gray-400 hover:text-black hover:bg-white shadow-sm border border-transparent hover:border-gray-200 transition-all"
-            title="Edit this page"
+            className="p-2 bg-white/90 backdrop-blur rounded-full text-gray-500 hover:text-black hover:bg-white shadow-sm transition-all"
+            title="编辑页面"
           >
             <Pencil className="w-4 h-4" />
           </button>
@@ -477,7 +477,7 @@ const PageRenderer: React.FC<Props> = ({
       )}
 
       {isEditing && (
-        <div className="absolute top-0 left-0 right-0 z-30 bg-white/95 backdrop-blur-md border-b border-gray-200 p-4 shadow-lg animate-fade-in-down no-print">
+        <div className="absolute top-0 left-0 right-0 z-30 bg-white/92 backdrop-blur-md p-4 shadow-lg animate-fade-in-down no-print">
           <form onSubmit={handleEditSubmit} className="flex gap-2 items-start max-w-2xl mx-auto">
             <div className="flex-1 relative">
               <input
@@ -485,16 +485,16 @@ const PageRenderer: React.FC<Props> = ({
                 type="text"
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
-                placeholder="Tell AI how to update this page..."
-                className="w-full bg-gray-100 border-none rounded-xl px-4 py-3 pr-12 text-sm font-sans focus:ring-2 focus:ring-black/5"
+                placeholder="告诉我你希望这一页如何修改"
+                className="w-full bg-white border-none rounded-xl px-4 py-3 pr-12 text-sm font-sans focus:ring-2 focus:ring-black/5"
                 disabled={loading}
               />
               {loading && <Loader2 className="w-4 h-4 absolute right-4 top-3.5 animate-spin text-gray-400" />}
             </div>
-            <button type="submit" disabled={loading || !prompt.trim()} className="p-3 bg-black text-white rounded-xl hover:bg-gray-800 disabled:opacity-50 transition-colors" title="Submit update">
+            <button type="submit" disabled={loading || !prompt.trim()} className="p-3 bg-black text-white rounded-xl hover:bg-gray-800 disabled:opacity-50 transition-colors" title="提交修改">
               <Send className="w-4 h-4" />
             </button>
-            <button type="button" onClick={() => setIsEditing(false)} className="p-3 text-gray-400 hover:text-black hover:bg-gray-100 rounded-xl transition-colors" title="Cancel">
+            <button type="button" onClick={() => setIsEditing(false)} className="p-3 text-gray-400 hover:text-black hover:bg-gray-100 rounded-xl transition-colors" title="取消">
               <X className="w-4 h-4" />
             </button>
           </form>
@@ -509,7 +509,7 @@ const PageRenderer: React.FC<Props> = ({
               <div className="w-2 h-2 bg-black rounded-full animate-bounce" />
               <div className="w-2 h-2 bg-black rounded-full animate-bounce delay-75" />
               <div className="w-2 h-2 bg-black rounded-full animate-bounce delay-150" />
-              <span className="font-sans text-xs font-bold tracking-widest">AI is analyzing page</span>
+              <span className="font-sans text-xs font-bold tracking-widest">正在分析本页版式</span>
             </div>
           </div>
         </div>
@@ -518,7 +518,7 @@ const PageRenderer: React.FC<Props> = ({
       <div className={`page-content px-6 md:px-20 py-16 md:py-24 max-w-[1000px] mx-auto transition-opacity duration-1000 ${page.status === 'analyzing' ? 'opacity-10' : 'opacity-100'}`} onMouseUp={handleContentMouseUp}>
         {page.blocks.length === 0 && page.status === 'done' && (
           <div className="text-center py-20 text-gray-400 italic font-serif">
-            No structured content was detected on this page.
+            本页未检测到可结构化内容
           </div>
         )}
 

@@ -1,4 +1,4 @@
-﻿* {
+* {
   box-sizing: border-box;
 }
 
@@ -16,4 +16,69 @@ svg,
 canvas {
   display: block;
   max-width: 100%;
+}
+
+:root {
+  --ink-strong: #0f0f11;
+  --ink-main: #191a1f;
+  --ink-soft: #4f515a;
+  --paper: #f4f2ec;
+  --mist: rgba(255, 255, 255, 0.72);
+  --mist-strong: rgba(255, 255, 255, 0.9);
+  --shadow-deep: 0 24px 70px -30px rgba(0, 0, 0, 0.38);
+  --shadow-soft: 0 14px 36px -18px rgba(15, 15, 17, 0.24);
+}
+
+html,
+body {
+  background:
+    radial-gradient(circle at 18% 0%, rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0) 48%),
+    radial-gradient(circle at 92% 18%, rgba(213, 217, 226, 0.35), rgba(213, 217, 226, 0) 45%),
+    radial-gradient(circle at 52% 100%, rgba(224, 220, 210, 0.45), rgba(224, 220, 210, 0) 42%),
+    linear-gradient(145deg, #f6f4ee 0%, #f1efea 38%, #ebe9e2 100%);
+  color: var(--ink-main);
+  font-family: var(--font-sans);
+}
+
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(to right, rgba(24, 24, 25, 0.02) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(24, 24, 25, 0.02) 1px, transparent 1px);
+  background-size: 48px 48px;
+  opacity: 0.55;
+}
+
+::selection {
+  background: rgba(17, 24, 39, 0.2);
+  color: #111827;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(60, 63, 72, 0.18);
+  border-radius: 999px;
+}
+
+.glass-surface {
+  background: var(--mist);
+  backdrop-filter: blur(16px) saturate(135%);
+  box-shadow: var(--shadow-soft);
+}
+
+.glass-surface-strong {
+  background: var(--mist-strong);
+  backdrop-filter: blur(18px) saturate(145%);
+  box-shadow: var(--shadow-deep);
 }

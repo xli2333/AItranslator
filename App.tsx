@@ -39,7 +39,17 @@ import PageRenderer from './components/PageRenderer';
 import FileUpload from './components/FileUpload';
 import LanguageSelector from './components/LanguageSelector';
 
-const createDocumentScope = (): ChatScope => ({ key: 'document', kind: 'document', label: 'Document Chat' });
+const createDocumentScope = (): ChatScope => ({ key: 'document', kind: 'document', label: '全文对话' });
+
+const localizeScopeLabel = (scope: ChatScope): ChatScope => {
+  if (scope.kind === 'document') {
+    return { ...scope, label: '全文对话' };
+  }
+  if (scope.kind === 'page') {
+    return { ...scope, label: `第 ${scope.pageNumber ?? '-'} 页` };
+  }
+  return { ...scope, label: `选中 第 ${scope.pageNumber ?? '-'} 页` };
+};
 
 const applyChatActions = (pages: ProcessedPage[], actions: ChatEditAction[], scope: ChatScope): ProcessedPage[] => {
   const allowed = actions.filter((action) => {
@@ -79,7 +89,7 @@ const App: React.FC = () => {
   const [targetLang, setTargetLang] = useState<string>(Language.ZH);
   const [viewMode, setViewMode] = useState<ViewMode>('translation');
   const [customInstruction, setCustomInstruction] = useState('');
-  const [pageRange, setPageRange] = useState('all');
+  const [pageRange, setPageRange] = useState('全部');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isExporting, setIsExporting] = useState(false);
 
@@ -147,7 +157,7 @@ const App: React.FC = () => {
 
   const parsePageRange = (rangeStr: string, totalPages: number) => {
     const clean = rangeStr.trim().toLowerCase();
-    if (!clean || clean === 'all') return Array.from({ length: totalPages }, (_, i) => i + 1);
+    if (!clean || clean === 'all' || clean === '全部') return Array.from({ length: totalPages }, (_, i) => i + 1);
     const pagesSet = new Set<number>();
     clean.split(/[,，]/).forEach((part) => {
       if (!part.trim()) return;
@@ -187,7 +197,7 @@ const App: React.FC = () => {
     try {
       for (let i = 0; i < initialPages.length; i += 1) {
         if (stopRef.current) break;
-        setProgress(`Analyzing page ${initialPages[i].pageNumber}...`);
+        setProgress(`正在分析第 ${initialPages[i].pageNumber} 页...`);
         setPages((curr) => curr.map((p, idx) => (idx === i ? { ...p, status: 'analyzing' } : p)));
 
         const blocks = harmonizeTypographyForBlocks(await analyzePageLayout(initialPages[i].originalImageUrl, sourceLang, targetLang, apiKey, customInstruction));
@@ -207,22 +217,22 @@ const App: React.FC = () => {
         setPages((curr) => curr.map((p, idx) => (idx === i ? { ...p, status: 'done' } : p)));
       }
       setStatus(AppStatus.COMPLETED);
-      setProgress(stopRef.current ? 'Stopped' : 'Done');
+      setProgress(stopRef.current ? '已停止' : '处理完成');
       await upsertDocumentPages(docId, pages);
     } catch (error) {
       console.error(error);
       setStatus(AppStatus.ERROR);
-      setProgress('Pipeline failed');
+      setProgress('处理失败');
     } finally {
       processingRef.current = false;
     }
   };
 
   const startProcessing = async (file: File) => {
-    if (!apiKey.trim()) return alert('Gemini API key required');
-    if (!session?.user) return alert('Sign in required');
+    if (!apiKey.trim()) return alert('请先输入 Gemini 密钥。');
+    if (!session?.user) return alert('请先登录。');
     setStatus(AppStatus.PROCESSING);
-    setProgress('Preparing...');
+    setProgress('正在准备文档...');
     setAnnotations([]);
     setPendingSnippet(null);
     setChatScopes({ document: createDocumentScope() });
@@ -232,7 +242,7 @@ const App: React.FC = () => {
 
     const doc = await createDocument({
       userId: session.user.id,
-      title: file.name.replace(/\\.pdf$/i, ''),
+      title: file.name.replace(/\.pdf$/i, ''),
       sourceLang,
       targetLang,
       sourceFileName: file.name,
@@ -274,14 +284,14 @@ const App: React.FC = () => {
     setSourceLang(snapshot.document.sourceLang);
     setTargetLang(snapshot.document.targetLang);
     const scopes: Record<string, ChatScope> = { document: createDocumentScope() };
-    snapshot.scopes.forEach((s) => { scopes[s.key] = s; });
+    snapshot.scopes.forEach((s) => { scopes[s.key] = localizeScopeLabel(s); });
     setChatScopes(scopes);
     setChatMessages({ document: snapshot.messagesByScopeKey.document ?? [], ...snapshot.messagesByScopeKey });
     setActiveChatKey('document');
   };
 
   const sendChat = async (text: string) => {
-    if (!apiKey.trim()) return alert('Gemini API key required');
+    if (!apiKey.trim()) return alert('请先输入 Gemini 密钥。');
     const scope = chatScopes[activeChatKey] ?? createDocumentScope();
     const history = chatMessages[scope.key] ?? [];
     const userTurn: ChatMessage = { role: 'user', text, createdAt: Date.now() };
@@ -303,9 +313,10 @@ const App: React.FC = () => {
   };
 
   const createOrSelectScope = (scope: ChatScope) => {
-    setChatScopes((prev) => ({ ...prev, [scope.key]: scope }));
-    setChatMessages((prev) => (prev[scope.key] ? prev : { ...prev, [scope.key]: [] }));
-    setActiveChatKey(scope.key);
+    const localized = localizeScopeLabel(scope);
+    setChatScopes((prev) => ({ ...prev, [localized.key]: localized }));
+    setChatMessages((prev) => (prev[localized.key] ? prev : { ...prev, [localized.key]: [] }));
+    setActiveChatKey(localized.key);
   };
 
   const onSnippet = (snippet: SelectionSnippet) => {
@@ -316,7 +327,7 @@ const App: React.FC = () => {
       pageNumber: snippet.pageNumber,
       blockId: snippet.blockId,
       selectedText: snippet.selectedText,
-      label: `Selection P${snippet.pageNumber}`,
+      label: `选中 第 ${snippet.pageNumber} 页`,
     });
   };
 
@@ -366,7 +377,7 @@ const App: React.FC = () => {
   }, [annotations]);
 
   if (!isSupabaseConfigured) {
-    return <div className="min-h-screen flex items-center justify-center">Missing VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY</div>;
+    return <div className="min-h-screen flex items-center justify-center text-sm">缺少 Supabase 环境变量，请配置后重启。</div>;
   }
   if (!authReady) {
     return <div className="min-h-screen flex items-center justify-center"><Loader2 className="w-5 h-5 animate-spin" /></div>;
@@ -374,18 +385,28 @@ const App: React.FC = () => {
   if (!session) return <AuthPanel />;
 
   return (
-    <div className="min-h-screen bg-[#f2f2f2] text-[#111]">
-      <header className="fixed top-0 left-0 right-0 z-50 bg-[#f2f2f2] border-b border-gray-200 px-4 py-2 flex justify-between items-center">
-        <div className="font-semibold">AI PDF Translator</div>
+    <div className="min-h-screen text-[#111]">
+      <header className="fixed top-0 left-0 right-0 z-50 px-4 md:px-6 py-3 flex justify-between items-center backdrop-blur-md bg-white/50">
+        <div>
+          <div className="text-[11px] tracking-[0.24em] text-gray-500">智能文档翻译系统</div>
+          <div className="font-serif text-xl leading-none mt-1">译构工作台</div>
+        </div>
         <div className="flex items-center gap-2">
-          <button onClick={exportPdf} className="px-3 py-1.5 rounded-full bg-black text-white text-xs disabled:opacity-50" disabled={isExporting || !pages.length}>
+          <button
+            onClick={exportPdf}
+            className="px-3 py-2 rounded-full bg-black text-white text-xs tracking-[0.12em] disabled:opacity-50 inline-flex items-center gap-1.5"
+            disabled={isExporting || !pages.length}
+          >
             {isExporting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
+            导出译文
           </button>
-          <button onClick={() => { supabase.auth.signOut(); }} className="p-2 rounded-full border border-gray-200 bg-white"><LogOut className="w-4 h-4" /></button>
+          <button onClick={() => { supabase.auth.signOut(); }} className="p-2 rounded-full bg-white/90 text-gray-700 hover:text-black">
+            <LogOut className="w-4 h-4" />
+          </button>
         </div>
       </header>
 
-      <main className="pt-16 px-4 pb-20 max-w-[1600px] mx-auto grid grid-cols-1 lg:grid-cols-[280px_1fr_320px] gap-4">
+      <main className="pt-24 px-4 pb-20 max-w-[1720px] mx-auto grid grid-cols-1 lg:grid-cols-[290px_1fr_330px] gap-4 md:gap-5">
         <DocumentLibrary
           documents={documents}
           activeDocumentId={activeDocumentId}
@@ -393,7 +414,7 @@ const App: React.FC = () => {
           onReload={refreshDocuments}
           onOpen={loadDocument}
           onDelete={async (id) => {
-            if (!window.confirm('Delete this document and all related data?')) return;
+            if (!window.confirm('确认删除该文档及其全部标注和对话记录吗？')) return;
             await deleteDocument(id);
             setDocuments((prev) => prev.filter((d) => d.id !== id));
             if (activeDocumentId === id) {
@@ -422,15 +443,30 @@ const App: React.FC = () => {
 
         <section>
           {status === AppStatus.IDLE && (
-            <div className="space-y-4">
+            <div className="space-y-4 glass-surface rounded-[1.8rem] p-4 md:p-6">
               <LanguageSelector sourceLang={sourceLang} targetLang={targetLang} setSourceLang={setSourceLang} setTargetLang={setTargetLang} disabled={false} />
-              <input className="w-full border border-gray-200 rounded-xl px-3 py-2" placeholder="Gemini API key" value={apiKey} onChange={(e) => setApiKey(e.target.value)} />
-              <input className="w-full border border-gray-200 rounded-xl px-3 py-2" placeholder="Page range: all or 1-3,8" value={pageRange} onChange={(e) => setPageRange(e.target.value)} />
-              <textarea className="w-full h-20 border border-gray-200 rounded-xl px-3 py-2" placeholder="Custom instruction (optional)" value={customInstruction} onChange={(e) => setCustomInstruction(e.target.value)} />
+              <input
+                className="w-full rounded-2xl px-4 py-3 bg-white/85 outline-none text-sm"
+                placeholder="请输入 Gemini 密钥"
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+              />
+              <input
+                className="w-full rounded-2xl px-4 py-3 bg-white/85 outline-none text-sm"
+                placeholder="页码范围：全部 或 1-3,8"
+                value={pageRange}
+                onChange={(e) => setPageRange(e.target.value)}
+              />
+              <textarea
+                className="w-full h-20 rounded-2xl px-4 py-3 bg-white/85 outline-none text-sm resize-none"
+                placeholder="补充翻译要求（可选）"
+                value={customInstruction}
+                onChange={(e) => setCustomInstruction(e.target.value)}
+              />
               {!selectedFile ? <FileUpload onFileSelect={setSelectedFile} /> : (
-                <div className="space-y-3">
-                  <div className="text-sm">Selected: {selectedFile.name}</div>
-                  <button className="px-4 py-2 rounded-xl bg-black text-white" onClick={() => startProcessing(selectedFile)}>Start</button>
+                <div className="space-y-3 rounded-2xl bg-white/80 p-4">
+                  <div className="text-sm text-gray-600">已选择：{selectedFile.name}</div>
+                  <button className="px-5 py-2.5 rounded-xl bg-black text-white text-sm tracking-[0.12em]" onClick={() => startProcessing(selectedFile)}>开始翻译</button>
                 </div>
               )}
             </div>
@@ -438,26 +474,26 @@ const App: React.FC = () => {
 
           {status !== AppStatus.IDLE && (
             <div className="space-y-4">
-              <div className="flex items-center justify-between bg-black text-white px-3 py-2 rounded-xl text-xs">
+              <div className="flex items-center justify-between bg-black text-white px-4 py-3 rounded-2xl text-xs tracking-[0.1em]">
                 <span>{progress}</span>
                 {status === AppStatus.PROCESSING && (
-                  <button onClick={() => { stopRef.current = true; }}><Square className="w-3 h-3" /></button>
+                  <button onClick={() => { stopRef.current = true; }} title="停止任务"><Square className="w-3 h-3" /></button>
                 )}
               </div>
-              <div className="flex items-center gap-2">
+              <div className="inline-flex items-center gap-2 p-1 rounded-full bg-white/70">
                 <button
                   type="button"
-                  className={`px-3 py-1.5 text-xs rounded-full border ${viewMode === 'translation' ? 'bg-black text-white border-black' : 'bg-white text-gray-600 border-gray-200'}`}
+                  className={`px-4 py-1.5 text-xs rounded-full transition-colors ${viewMode === 'translation' ? 'bg-black text-white' : 'text-gray-600 hover:bg-white'}`}
                   onClick={() => setViewMode('translation')}
                 >
                   译文视图
                 </button>
                 <button
                   type="button"
-                  className={`px-3 py-1.5 text-xs rounded-full border ${viewMode === 'bilingual' ? 'bg-black text-white border-black' : 'bg-white text-gray-600 border-gray-200'}`}
+                  className={`px-4 py-1.5 text-xs rounded-full transition-colors ${viewMode === 'bilingual' ? 'bg-black text-white' : 'text-gray-600 hover:bg-white'}`}
                   onClick={() => setViewMode('bilingual')}
                 >
-                  中英对照
+                  双语对照
                 </button>
               </div>
               {pages.map((page) => (
@@ -468,7 +504,7 @@ const App: React.FC = () => {
                   apiKey={apiKey}
                   viewMode={viewMode}
                   onUpdatePage={(pageNumber, blocks) => setPages((prev) => prev.map((p) => (p.pageNumber === pageNumber ? { ...p, blocks } : p)))}
-                  onStartPageChat={(pageNumber) => createOrSelectScope({ key: `page-${pageNumber}`, kind: 'page', pageNumber, label: `Page ${pageNumber}` })}
+                  onStartPageChat={(pageNumber) => createOrSelectScope({ key: `page-${pageNumber}`, kind: 'page', pageNumber, label: `第 ${pageNumber} 页` })}
                   onSelectSnippet={onSnippet}
                   annotationsByBlockId={annotationByBlock}
                   activeAnnotationId={activeAnnotationId}

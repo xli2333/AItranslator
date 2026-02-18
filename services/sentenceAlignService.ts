@@ -61,10 +61,11 @@ export const splitSentences = (text: string): SentenceSegment[] => {
   }
 
   if (segments.length === 0 && normalized.trim()) {
+    const first = normalized.search(/\S/);
     return [{
       text: normalized.trim(),
-      start: normalized.search(/\S/),
-      end: normalized.search(/\S/) + normalized.trim().length,
+      start: first,
+      end: first + normalized.trim().length,
       index: 0,
     }];
   }

@@ -37,23 +37,23 @@ const TranslationChatPanel: React.FC<Props> = ({
   };
 
   return (
-    <aside className="fixed right-3 md:right-6 bottom-24 md:bottom-8 z-50 w-[min(96vw,430px)] bg-white/95 backdrop-blur-md border border-gray-200 rounded-2xl shadow-2xl no-print overflow-hidden">
-      <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+    <aside className="fixed right-3 md:right-6 bottom-24 md:bottom-8 z-50 w-[min(96vw,430px)] rounded-[1.4rem] glass-surface-strong no-print overflow-hidden">
+      <div className="px-4 py-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <MessageCircle className="w-4 h-4 text-gray-600" />
-          <span className="font-sans text-xs tracking-[0.16em] text-gray-500">Translation Chat</span>
+          <span className="font-serif text-base text-[#16171b]">对话编辑</span>
         </div>
       </div>
 
-      <div className="px-3 py-2 border-b border-gray-100 flex flex-wrap gap-2">
+      <div className="px-3 py-2 flex flex-wrap gap-2">
         {scopes.map((scope) => (
           <button
             key={scope.key}
             onClick={() => onSwitchScope(scope.key)}
-            className={`px-3 py-1 rounded-full text-[11px] font-sans border transition-colors ${
+            className={`px-3 py-1 rounded-full text-[11px] tracking-[0.12em] transition-colors ${
               scope.key === activeScopeKey
-                ? 'bg-black text-white border-black'
-                : 'bg-white text-gray-600 border-gray-200 hover:border-gray-400'
+                ? 'bg-black text-white'
+                : 'bg-white/85 text-gray-600 hover:bg-white'
             }`}
             type="button"
           >
@@ -63,15 +63,15 @@ const TranslationChatPanel: React.FC<Props> = ({
       </div>
 
       {activeScope?.kind === 'selection' && activeScope.selectedText && (
-        <div className="px-4 py-2 border-b border-gray-100 text-[11px] text-gray-500">
-          Selected text: {activeScope.selectedText}
+        <div className="px-4 py-2 text-[11px] text-gray-500">
+          当前选中：{activeScope.selectedText}
         </div>
       )}
 
-      <div className="h-72 overflow-y-auto px-4 py-3 bg-gradient-to-b from-white via-gray-50/20 to-white">
+      <div className="h-72 overflow-y-auto px-4 py-3 bg-gradient-to-b from-white/90 via-white/60 to-white/80">
         {messages.length === 0 && (
-          <p className="text-xs text-gray-400 font-sans">
-            Ask questions or request edits in the current scope.
+          <p className="text-xs text-gray-400">
+            在当前范围内提问或发起改写指令
           </p>
         )}
 
@@ -79,14 +79,14 @@ const TranslationChatPanel: React.FC<Props> = ({
           {messages.map((msg, idx) => (
             <div key={`${msg.role}-${msg.createdAt}-${idx}`} className={`flex gap-2 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
               {msg.role === 'model' && (
-                <div className="w-7 h-7 rounded-full bg-gray-100 text-gray-500 flex items-center justify-center shrink-0">
+                <div className="w-7 h-7 rounded-full bg-white text-gray-500 flex items-center justify-center shrink-0">
                   <Bot className="w-4 h-4" />
                 </div>
               )}
               <div className={`max-w-[82%] rounded-2xl px-3 py-2 text-sm whitespace-pre-wrap ${
                 msg.role === 'user'
                   ? 'bg-black text-white rounded-br-md'
-                  : 'bg-gray-100 text-gray-800 rounded-bl-md'
+                  : 'bg-white text-[#2a2b31] rounded-bl-md'
               }`}
               >
                 {msg.text}
@@ -104,19 +104,19 @@ const TranslationChatPanel: React.FC<Props> = ({
         </div>
       </div>
 
-      <form onSubmit={submit} className="p-3 border-t border-gray-100 flex items-end gap-2">
+      <form onSubmit={submit} className="p-3 flex items-end gap-2">
         <textarea
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="Type message..."
-          className="flex-1 resize-none h-20 bg-gray-50 rounded-xl border border-gray-200 px-3 py-2 text-sm outline-none focus:border-black transition-colors"
+          placeholder="输入你的要求"
+          className="flex-1 resize-none h-20 bg-white/90 rounded-xl px-3 py-2 text-sm outline-none"
           disabled={loading}
         />
         <button
           type="submit"
           className="h-11 w-11 rounded-xl bg-black text-white flex items-center justify-center disabled:opacity-50"
           disabled={loading || !input.trim()}
-          title="Send"
+          title="发送"
         >
           {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
         </button>

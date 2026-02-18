@@ -24,7 +24,7 @@ const ALLOWED_ROLES: TextRole[] = ['title', 'subtitle', 'body', 'caption', 'foot
 const getAI = (apiKey: string) => {
   const safeKey = apiKey.trim();
   if (!safeKey) {
-    throw new Error('Gemini API key is required.');
+    throw new Error('缺少 Gemini 密钥。');
   }
 
   const cached = aiClients.get(safeKey);
@@ -475,13 +475,13 @@ Default answer language is ${targetLang} unless user asks otherwise.
   });
 
   if (!response.text) {
-    return { assistantReply: 'No response, please retry.', actions: [] };
+    return { assistantReply: '本次未获得有效回复，请重试。', actions: [] };
   }
 
   try {
     const parsed = JSON.parse(response.text);
     return {
-      assistantReply: typeof parsed?.assistantReply === 'string' ? parsed.assistantReply : 'Done.',
+      assistantReply: typeof parsed?.assistantReply === 'string' ? parsed.assistantReply : '处理完成。',
       actions: sanitizeAssistantActions(parsed?.actions ?? []),
     };
   } catch {

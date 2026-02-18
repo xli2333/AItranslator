@@ -24,8 +24,43 @@ type LoadedChats = {
 };
 
 const DOCUMENT_BUCKET = 'user-documents';
+const STORAGE_SAFE_SEGMENT = /[^a-zA-Z0-9._-]+/g;
 
 const nowIso = () => new Date().toISOString();
+
+const normalizeFileNameForStorage = (
+  inputName: string,
+  fallbackBase = 'file',
+  fallbackExt = 'bin',
+): string => {
+  const fileName = (inputName || '').split(/[\\/]/).pop() || '';
+  const extMatch = fileName.match(/\.([a-zA-Z0-9]{1,10})$/);
+  const ext = (extMatch?.[1] || fallbackExt).toLowerCase();
+  const rawBase = extMatch ? fileName.slice(0, -extMatch[0].length) : fileName;
+
+  const normalized = rawBase
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(STORAGE_SAFE_SEGMENT, '-')
+    .replace(/-+/g, '-')
+    .replace(/^[-.]+|[-.]+$/g, '');
+
+  const base = normalized || fallbackBase;
+  return `${base}.${ext}`;
+};
+
+const buildStorageObjectPath = (
+  userId: string,
+  documentId: string,
+  folder: 'source' | 'export',
+  originalName: string,
+  fallbackBase: string,
+  fallbackExt: string,
+): string => {
+  const safeName = normalizeFileNameForStorage(originalName, fallbackBase, fallbackExt);
+  const nonce = Math.random().toString(36).slice(2, 8);
+  return `${userId}/${documentId}/${folder}/${Date.now()}-${nonce}-${safeName}`;
+};
 
 const sortScopes = (scopes: ChatScope[]): ChatScope[] => {
   return [...scopes].sort((a, b) => {
@@ -79,7 +114,7 @@ const buildScopeFromThread = (row: any): ChatScope => {
     return {
       key: row.scope_key,
       kind: 'page',
-      label: `Page ${row.page_number}`,
+      label: `第 ${row.page_number} 页`,
       pageNumber: row.page_number ?? undefined,
     };
   }
@@ -88,7 +123,7 @@ const buildScopeFromThread = (row: any): ChatScope => {
     return {
       key: row.scope_key,
       kind: 'selection',
-      label: row.page_number ? `Selection P${row.page_number}` : 'Selection',
+      label: row.page_number ? `选中 第 ${row.page_number} 页` : '选中文本',
       pageNumber: row.page_number ?? undefined,
       blockId: row.block_id ?? undefined,
       selectedText: row.selected_text ?? undefined,
@@ -98,7 +133,7 @@ const buildScopeFromThread = (row: any): ChatScope => {
   return {
     key: row.scope_key,
     kind: 'document',
-    label: 'Document Chat',
+    label: '全文对话',
   };
 };
 
@@ -173,7 +208,7 @@ export const uploadSourcePdf = async (
 ): Promise<string> => {
   assertSupabaseConfigured();
 
-  const path = `${userId}/${documentId}/source/${Date.now()}-${file.name}`;
+  const path = buildStorageObjectPath(userId, documentId, 'source', file.name, 'source', 'pdf');
   const { error } = await supabase.storage.from(DOCUMENT_BUCKET).upload(path, file, { upsert: true });
   if (error) throw error;
   return path;
@@ -187,7 +222,7 @@ export const uploadExportedPdf = async (
 ): Promise<string> => {
   assertSupabaseConfigured();
 
-  const path = `${userId}/${documentId}/export/${Date.now()}-${fileName}`;
+  const path = buildStorageObjectPath(userId, documentId, 'export', fileName, 'translation', 'pdf');
   const { error } = await supabase.storage.from(DOCUMENT_BUCKET).upload(path, blob, {
     upsert: true,
     contentType: 'application/pdf',
@@ -396,7 +431,7 @@ export const loadDocumentSnapshot = async (documentId: string): Promise<Document
   ]);
 
   const scopeMap = new Map<string, ChatScope>();
-  scopeMap.set('document', { key: 'document', kind: 'document', label: 'Document Chat' });
+  scopeMap.set('document', { key: 'document', kind: 'document', label: '全文对话' });
   for (const scope of chats.scopes) {
     scopeMap.set(scope.key, scope);
   }

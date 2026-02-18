@@ -27,57 +27,63 @@ const DocumentLibrary: React.FC<Props> = ({
   onNew,
 }) => {
   return (
-    <aside className="w-full lg:w-72 bg-white border border-gray-200 rounded-2xl shadow-sm h-fit sticky top-24 no-print">
-      <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
-        <div className="flex items-center gap-2 text-sm font-semibold">
+    <aside className="w-full lg:w-72 h-fit sticky top-24 no-print glass-surface rounded-[1.6rem] px-3 py-3">
+      <div className="px-2 py-1.5 flex items-center justify-between">
+        <div className="flex items-center gap-2 text-sm">
           <BookOpen className="w-4 h-4" />
-          My Documents
+          <span className="font-serif text-lg">文档库</span>
         </div>
         <button
           type="button"
-          className="p-1.5 rounded-md hover:bg-gray-100 text-gray-500"
+          className="p-2 rounded-full hover:bg-black/5 text-gray-500"
           onClick={onReload}
-          title="Reload"
+          title="刷新文档"
           disabled={loading}
         >
           {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
         </button>
       </div>
 
-      <div className="p-3">
+      <div className="px-2 pt-2 pb-3">
         <button
           type="button"
           onClick={onNew}
-          className="w-full rounded-xl border border-dashed border-gray-300 py-2 text-sm text-gray-700 hover:border-black hover:text-black transition-colors"
+          className="w-full rounded-2xl bg-black text-white py-2.5 text-sm tracking-[0.12em] hover:bg-[#22242a] transition-colors"
         >
-          New Translation Session
+          新建翻译任务
         </button>
       </div>
 
-      <div className="max-h-[60vh] overflow-y-auto pb-2">
+      <div className="max-h-[62vh] overflow-y-auto pb-1">
         {documents.length === 0 && (
-          <p className="px-4 pb-4 text-xs text-gray-400">No documents yet.</p>
+          <p className="px-3 py-3 text-xs text-gray-400">暂时还没有文档</p>
         )}
         {documents.map((doc) => (
           <div
             key={doc.id}
-            className={`mx-3 mb-2 rounded-xl border px-3 py-2 ${
-              activeDocumentId === doc.id ? 'border-black bg-gray-50' : 'border-gray-200 bg-white'
+            className={`mx-2 mb-2 rounded-2xl px-3 py-3 transition-all ${
+              activeDocumentId === doc.id
+                ? 'bg-black text-white shadow-lg'
+                : 'bg-white/80 text-[#17181d] hover:bg-white'
             }`}
           >
             <button type="button" className="w-full text-left" onClick={() => onOpen(doc.id)}>
-              <div className="text-sm font-semibold line-clamp-1">{doc.title}</div>
-              <div className="text-[11px] text-gray-500 mt-1 line-clamp-1">
-                {doc.sourceLang} {'->'} {doc.targetLang}
+              <div className="text-sm font-medium line-clamp-1">{doc.title}</div>
+              <div className={`text-[11px] mt-1 line-clamp-1 ${activeDocumentId === doc.id ? 'text-gray-300' : 'text-gray-500'}`}>
+                {doc.sourceLang} → {doc.targetLang}
               </div>
-              <div className="text-[10px] text-gray-400 mt-1">{formatTime(doc.updatedAt)}</div>
+              <div className={`text-[10px] mt-1 ${activeDocumentId === doc.id ? 'text-gray-400' : 'text-gray-400'}`}>{formatTime(doc.updatedAt)}</div>
             </button>
             <div className="mt-2 flex justify-end">
               <button
                 type="button"
                 onClick={() => onDelete(doc.id)}
-                className="p-1.5 rounded-md text-gray-400 hover:text-red-600 hover:bg-red-50"
-                title="Delete"
+                className={`p-1.5 rounded-full transition-colors ${
+                  activeDocumentId === doc.id
+                    ? 'text-gray-300 hover:text-red-300 hover:bg-white/10'
+                    : 'text-gray-400 hover:text-red-600 hover:bg-red-50'
+                }`}
+                title="删除文档"
               >
                 <Trash2 className="w-3.5 h-3.5" />
               </button>

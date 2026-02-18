@@ -1,4 +1,4 @@
-﻿import React, { useCallback } from 'react';
+import React, { useCallback } from 'react';
 import { UploadCloud, Sparkles } from 'lucide-react';
 
 interface Props {
@@ -50,30 +50,28 @@ const FileUpload: React.FC<Props> = ({ onFileSelect }) => {
         htmlFor="pdf-upload"
         className="block w-full"
       >
-        <div className="relative overflow-hidden rounded-3xl border-2 border-dashed border-gray-200 bg-white p-8 md:p-9 text-center transition-all duration-300 hover:border-black hover:shadow-2xl hover:-translate-y-1">
-          <div className="absolute inset-0 bg-gradient-to-tr from-gray-50 to-transparent opacity-0 transition-opacity duration-500 group-hover:opacity-100" />
+        <div className="relative overflow-hidden rounded-[1.8rem] glass-surface-strong p-8 md:p-10 text-center transition-all duration-300 hover:-translate-y-1">
+          <div className="absolute -top-12 -right-12 h-40 w-40 bg-black/5 rounded-full blur-3xl" />
+          <div className="absolute -bottom-16 -left-10 h-44 w-44 bg-gray-300/25 rounded-full blur-3xl" />
 
           <div className="relative z-10 flex flex-col items-center gap-4">
-            <div className="relative">
-              <div className="absolute inset-0 animate-ping rounded-full bg-gray-200 opacity-0 group-hover:opacity-75" />
-              <div className="relative flex h-14 w-14 items-center justify-center rounded-2xl bg-black text-white shadow-lg transition-transform duration-300 group-hover:scale-110 group-hover:rotate-3">
-                <UploadCloud className="h-7 w-7" />
-              </div>
+            <div className="relative flex h-14 w-14 items-center justify-center rounded-2xl bg-black text-white shadow-lg transition-transform duration-300 group-hover:scale-110 group-hover:rotate-3">
+              <UploadCloud className="h-7 w-7" />
             </div>
 
             <div className="space-y-2">
-              <h3 className="font-serif text-2xl font-medium text-gray-900">
-                上传 PDF 文档
+              <h3 className="font-serif text-3xl leading-tight text-[#101116]">
+                上传文档
               </h3>
-              <p className="font-sans text-xs md:text-sm tracking-wide text-gray-400">
-                拖拽文件到此处，或点击选择文件
+              <p className="font-sans text-xs md:text-sm tracking-[0.16em] text-gray-500">
+                拖拽 PDF 到此处，或点击选择文件
               </p>
             </div>
 
-            <div className="flex items-center gap-2 rounded-full bg-gray-100 px-4 py-1.5 transition-colors group-hover:bg-gray-200">
+            <div className="flex items-center gap-2 rounded-full bg-white/75 px-4 py-1.5">
               <Sparkles className="h-3 w-3 text-black" />
-              <span className="text-xs font-semibold tracking-wide text-gray-600">
-                已启用 AI 版式分析
+              <span className="text-xs font-medium tracking-[0.1em] text-gray-600">
+                已启用版式智能还原
               </span>
             </div>
           </div>
