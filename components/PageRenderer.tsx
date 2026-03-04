@@ -89,7 +89,7 @@ const renderAnnotatedText = (
           key={annotation.id}
           className={`cursor-pointer rounded px-0.5 ${annotation.id === activeAnnotationId ? 'ring-1 ring-black' : ''}`}
           style={{ backgroundColor: annotation.color || '#fde68a' }}
-          title={annotation.note || '鏍囨敞'}
+          title={annotation.note || '标注'}
           onClick={() => onActivate(annotation.id)}
         >
           {slice}
@@ -165,7 +165,7 @@ const BilingualTextBlock: React.FC<{
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
       <div className="rounded-2xl bg-white/60 px-4 py-3 shadow-sm">
-        <div className="text-[10px] tracking-[0.2em] text-gray-500 mb-2">鍘熸枃</div>
+        <div className="text-[10px] tracking-[0.2em] text-gray-500 mb-2">原文</div>
         {sourceSentences.length > 0 ? sourceSentences.map((sentence) => (
           <span
             key={`src-${block.id}-${sentence.index}`}
@@ -180,7 +180,7 @@ const BilingualTextBlock: React.FC<{
       </div>
 
       <div className="rounded-2xl bg-white/85 px-4 py-3 shadow-sm">
-        <div className="text-[10px] tracking-[0.2em] text-gray-500 mb-2">璇戞枃</div>
+        <div className="text-[10px] tracking-[0.2em] text-gray-500 mb-2">译文</div>
         <div data-block-text="true" data-column="target">
           {targetSentences.length > 0 ? targetSentences.map((sentence) => (
             <span
@@ -294,7 +294,7 @@ const BlockRenderer: React.FC<{
       return (
         <div className="my-8 p-8 bg-white/80 rounded-2xl shadow-md relative overflow-hidden group">
           <div className="absolute top-0 right-0 w-16 h-16 bg-gray-200/20 rounded-bl-full -mr-8 -mt-8 transition-transform group-hover:scale-150 duration-500" />
-          <h4 className="font-sans font-bold tracking-widest text-gray-400 mb-4" style={{ fontSize: `${calloutLabelSize.toFixed(1)}px` }}>娉ㄩ噴</h4>
+          <h4 className="font-sans font-bold tracking-widest text-gray-400 mb-4" style={{ fontSize: `${calloutLabelSize.toFixed(1)}px` }}>注释</h4>
           <div className="font-serif text-gray-800" style={typoStyle}>{translationText}</div>
         </div>
       );
@@ -332,7 +332,7 @@ const BlockRenderer: React.FC<{
             ) : (
               <div className="w-full aspect-video flex flex-col items-center justify-center bg-gray-50/50 rounded-lg">
                 <div className="w-12 h-12 border-2 border-gray-200 border-t-black rounded-full animate-spin mb-4" />
-                <span className="font-sans tracking-[0.2em] text-gray-400" style={typoStyle}>姝ｅ湪娓叉煋鍥剧墖</span>
+                <span className="font-sans tracking-[0.2em] text-gray-400" style={typoStyle}>正在渲染图片</span>
               </div>
             )}
           </div>
@@ -384,7 +384,7 @@ const PageRenderer: React.FC<Props> = ({
       setPrompt('');
       setIsEditing(false);
     } catch (err) {
-      console.error('椤甸潰鏀瑰啓澶辫触', err);
+      console.error('页面改写失败', err);
     } finally {
       setLoading(false);
     }
@@ -483,14 +483,14 @@ const PageRenderer: React.FC<Props> = ({
           <button
             onClick={() => onStartPageChat(page.pageNumber)}
             className="p-2 bg-white/90 backdrop-blur rounded-full text-gray-500 hover:text-black hover:bg-white shadow-sm transition-all"
-            title="椤甸潰瀵硅瘽"
+            title="页面对话"
           >
             <MessageCircle className="w-4 h-4" />
           </button>
           <button
             onClick={() => setIsEditing(true)}
             className="p-2 bg-white/90 backdrop-blur rounded-full text-gray-500 hover:text-black hover:bg-white shadow-sm transition-all"
-            title="缂栬緫椤甸潰"
+            title="编辑页面"
           >
             <Pencil className="w-4 h-4" />
           </button>
@@ -512,10 +512,10 @@ const PageRenderer: React.FC<Props> = ({
               />
               {loading && <Loader2 className="w-4 h-4 absolute right-4 top-3.5 animate-spin text-gray-400" />}
             </div>
-            <button type="submit" disabled={loading || !prompt.trim()} className="p-3 bg-black text-white rounded-xl hover:bg-gray-800 disabled:opacity-50 transition-colors" title="鎻愪氦淇敼">
+            <button type="submit" disabled={loading || !prompt.trim()} className="p-3 bg-black text-white rounded-xl hover:bg-gray-800 disabled:opacity-50 transition-colors" title="提交修改">
               <Send className="w-4 h-4" />
             </button>
-            <button type="button" onClick={() => setIsEditing(false)} className="p-3 text-gray-400 hover:text-black hover:bg-gray-100 rounded-xl transition-colors" title="鍙栨秷">
+            <button type="button" onClick={() => setIsEditing(false)} className="p-3 text-gray-400 hover:text-black hover:bg-gray-100 rounded-xl transition-colors" title="取消">
               <X className="w-4 h-4" />
             </button>
           </form>
@@ -530,7 +530,7 @@ const PageRenderer: React.FC<Props> = ({
               <div className="w-2 h-2 bg-black rounded-full animate-bounce" />
               <div className="w-2 h-2 bg-black rounded-full animate-bounce delay-75" />
               <div className="w-2 h-2 bg-black rounded-full animate-bounce delay-150" />
-              <span className="font-sans text-xs font-bold tracking-widest">姝ｅ湪鍒嗘瀽鏈〉鐗堝紡</span>
+              <span className="font-sans text-xs font-bold tracking-widest">正在分析本页版式</span>
             </div>
           </div>
         </div>
@@ -539,7 +539,7 @@ const PageRenderer: React.FC<Props> = ({
       <div className={`page-content px-6 md:px-20 py-16 md:py-24 max-w-[1000px] mx-auto transition-opacity duration-1000 ${page.status === 'analyzing' ? 'opacity-10' : 'opacity-100'}`} onMouseUp={handleContentMouseUp}>
         {page.blocks.length === 0 && page.status === 'done' && (
           <div className="text-center py-20 text-gray-400 italic font-serif">
-            鏈〉鏈娴嬪埌鍙粨鏋勫寲鍐呭
+            本页未检测到可结构化内容
           </div>
         )}
 
